@@ -16,7 +16,7 @@
 
 namespace mvslam::map {
 
-struct ImuMapState { bool initialized = false, refined1 = false, refined2 = false; double scale = 1.0; core::SO3 R_wg; };
+struct ImuMapState { bool initialized = false, refined1 = false, refined2 = false; double scale = 1.0; core::SO3 R_wg; std::int64_t t_init = 0; int scale_refinements = 0; };
 
 // Observation of a not-yet-triangulated track in a keyframe (mapper temporal triangulation input).
 struct PendingObservation { core::KeyframeId kf; int keypoint_index = -1; };
@@ -40,6 +40,9 @@ class Map {
   void removeMapPoint(core::MapPointId mp);
   void updateCovisibility(core::KeyframeId kf, int min_shared = 15);
   void reclaim(std::uint64_t oldest_live_epoch);   // frees tombstones no reader can still hold
+  // Rigid rotation + scale of the whole map (IMU initialization): T_wb <- [R_gw R | s R_gw t], v <- s R_gw v,
+  // X <- s R_gw X, culled records likewise. Afterwards gravity points along -z (ORB-SLAM3 ApplyScaledRotation).
+  void applyScaledRotation(double s, const core::SO3& R_gw);
 
   // ---- queries (inside either lock) --------------------------------------------------------
   std::shared_ptr<KeyFrame> keyframe(core::KeyframeId id) const;

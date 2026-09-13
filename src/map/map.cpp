@@ -113,6 +113,19 @@ void Map::reclaim(std::uint64_t oldest_live_epoch) {
   mp_tombstones_.erase(std::remove_if(mp_tombstones_.begin(), mp_tombstones_.end(), pred_mp), mp_tombstones_.end());
 }
 
+void Map::applyScaledRotation(double s, const core::SO3& R_gw) {
+  auto xform = [&](const core::SE3& T) { return core::SE3(R_gw * T.so3(), s * (R_gw * T.translation())); };
+  for (auto& [_, kf] : keyframes_) {
+    kf->setT_wb(xform(kf->T_wb()));
+    kf->setVelocity(s * (R_gw * kf->velocity()));
+  }
+  for (auto& [_, mp] : map_points_) mp->setPosition(s * (R_gw * mp->position()));
+  for (auto& [_, rec] : culled_) {
+    rec.T_wc_at_cull = xform(rec.T_wc_at_cull);
+    rec.T_rc = core::SE3(rec.T_rc.so3(), s * rec.T_rc.translation());
+  }
+}
+
 std::shared_ptr<KeyFrame> Map::keyframe(core::KeyframeId id) const {
   auto it = keyframes_.find(id);
   return it == keyframes_.end() ? nullptr : it->second;

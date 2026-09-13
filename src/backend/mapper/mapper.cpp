@@ -109,6 +109,9 @@ core::KeyframeId Mapper::process(frontend::KeyframeRequest req, std::stop_token 
     desc = descriptors_->describe(req.left_raw.view(), uv_raw);
   }
   auto kf = std::make_shared<map::KeyFrame>(req.kf_id, req.frame.timestamp, req.frame.T_wb);
+  kf->setVelocity(req.frame.v_w);
+  kf->setBias(req.frame.bias);
+  kf->setPreintegration(req.preint_from_last_kf);
   auto& kps = kf->keypoints();
   kps.reserve(tracks.size());
   for (std::size_t i = 0; i < tracks.size(); ++i) {

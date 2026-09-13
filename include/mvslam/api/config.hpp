@@ -58,6 +58,7 @@ struct FrontendConfig {
   int reloc_max_hamming = 60;                               // query corners are fresh detections, keyframe corners were KLT-tracked (~1 px drift)
   int reloc_ransac_iters = 1000;                            // P3P-RANSAC for relocalization (low inlier ratios after motion blur)
   int reloc_min_lost_frames = 5;                            // consecutive failed frames before relocalizing (KLT usually recovers a single bad frame by itself)
+  bool inertial_pose_optimization = false;                  // frame pose from IMU factor + visual (MH01 stereo-inertial: 0.060/0.070 m vs 0.048 m with visual MotionOnlyBa + IMU prediction)
   int init_min_features = 100;          // stereo/rgbd: features required in the first keyframe; mono: matches
   int min_3d_for_ok = 15;               // 3-D tracks needed to leave Initializing / declare tracking ok
   int reinit_after_frames = 10;         // Initializing frames without 3-D tracks before restarting bootstrap
@@ -72,6 +73,7 @@ struct BackendConfig {
   SolverBackend solver = SolverBackend::Ceres;
   int lba_max_keyframes = 20, lba_min_covisibility = 15, lba_iters = 10; double lba_max_time_s = 0.2;
   int inertial_window = 10, inertial_window_large = 25, inertial_max_fixed_visual = 200;
+  bool inertial_lba = true;   // false: keep the visual covisibility LBA after IMU initialization (diagnostics)
   bool anchored_inverse_depth = true, l2_refine_after_robust = true;
   double huber_mono_chi2 = 5.991, huber_stereo_chi2 = 7.815;
   double kf_cull_redundancy = 0.9, kf_cull_redundancy_stereo_inertial = 0.5; int kf_cull_min_other_observers = 3;

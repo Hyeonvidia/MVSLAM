@@ -4,6 +4,8 @@
 #include <atomic>
 #include <memory>
 
+#include "backend/imu/imu_initializer.hpp"
+#include "backend/local_ba/inertial_bundle_adjuster.hpp"
 #include "backend/local_ba/local_bundle_adjuster.hpp"
 #include "backend/mapper/keyframe_culler.hpp"
 #include "backend/mapper/mapper.hpp"
@@ -28,6 +30,8 @@ struct Pipeline {
   std::unique_ptr<frontend::VisualFrontend> frontend;   // null when image code is unavailable (no OpenCV)
   std::unique_ptr<backend::Mapper> mapper_logic;
   std::unique_ptr<backend::LocalBundleAdjuster> lba;
+  std::unique_ptr<backend::InertialBundleAdjuster> inertial_lba;      // inertial configurations
+  std::unique_ptr<backend::imu::ImuInitializer> imu_init;
   std::unique_ptr<backend::KeyframeCuller> culler;
   std::unique_ptr<core::Worker<MapperJob>> mapper;
   std::unique_ptr<core::Worker<OptimizerJob>> optimizer;

@@ -1,14 +1,18 @@
 #include "pipelines/pipeline_factory.hpp"
 
+#include "backend/pose_inertial_optimizer.hpp"
 #include "backend/pose_optimizer.hpp"
 #include "core/math/se3.hpp"
 #include "map/hbst_place_recognizer.hpp"
 #include "core/log.hpp"
 #include "frontend/depth_image_source.hpp"
 #include "frontend/depth_initializer.hpp"
+#include "frontend/imu_predictor.hpp"
 #include "frontend/keyframe_policy.hpp"
 #include "frontend/pose_predictor.hpp"
 #include "mvslam/api/errors.hpp"
+
+#include <algorithm>
 #ifdef MVSLAM_HAVE_OPENCV
 #include "frontend/opencv/essential_filter.hpp"
 #include "frontend/opencv/orb_descriptor.hpp"
@@ -73,8 +77,14 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
 #else
   MVSLAM_WARN("built without OpenCV: frontend image processing is unavailable (backend/map only)");
 #endif
-  fc.predictor = std::make_unique<frontend::ConstantVelocityPredictor>();  // ImuPredictor: P2
-  fc.pose_optimizer = std::make_unique<backend::MotionOnlyBa>(*p->rig, p->solver, fcfg, cfg.backend);
+  if (inertial) {
+    fc.predictor = std::make_unique<frontend::ImuPredictor>();
+    if (cfg.frontend.inertial_pose_optimization) fc.pose_optimizer = std::make_unique<backend::PoseInertialOptimizer>(*p->rig, p->solver, fcfg, cfg.backend);
+    else fc.pose_optimizer = std::make_unique<backend::MotionOnlyBa>(*p->rig, p->solver, fcfg, cfg.backend);
+  } else {
+    fc.predictor = std::make_unique<frontend::ConstantVelocityPredictor>();
+    fc.pose_optimizer = std::make_unique<backend::MotionOnlyBa>(*p->rig, p->solver, fcfg, cfg.backend);
+  }
   fc.keyframe_policy = makeKeyframePolicy(cfg);
 #ifdef MVSLAM_HAVE_OPENCV
   fc.descriptor = std::make_unique<frontend::cv_impl::OrbDescriptorExtractor>();
@@ -105,7 +115,11 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
   p->mapper_logic->setDescriptorExtractor(std::make_unique<frontend::cv_impl::OrbDescriptorExtractor>());
 #endif
   p->lba = std::make_unique<backend::LocalBundleAdjuster>(cfg, *p->rig, p->solver);
-  p->culler = std::make_unique<backend::KeyframeCuller>(cfg);
+  if (inertial) {
+    p->inertial_lba = std::make_unique<backend::InertialBundleAdjuster>(cfg, *p->rig, p->solver);
+    p->imu_init = std::make_unique<backend::imu::ImuInitializer>(cfg, *p->rig, p->solver);
+  }
+  p->culler = std::make_unique<backend::KeyframeCuller>(cfg, p->rig.get());
 
   const auto policy = cfg.execution == ExecutionMode::Offline ? core::ExecutionPolicy::Sync : core::ExecutionPolicy::Async;
   Pipeline* raw = p.get();
@@ -114,8 +128,37 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
       [raw](OptimizerJob job, std::stop_token st) {
         auto map = raw->maps->active();
         const auto newer = [raw, kf = job.keyframe.value] { return raw->latest_keyframe_submitted.load(std::memory_order_relaxed) != kf; };
-        const auto rep = raw->lba->run(*map, job.keyframe, st, newer);
-        if (rep.applied && raw->maps->events().hasSubscribers()) raw->maps->events().publish(MapPointsUpdatedEvent{map->id().value, map->changeEpoch()});
+        bool applied = false;
+        const bool imu_ready = raw->inertial_lba && raw->config.backend.inertial_lba && map->withReadLock([](const map::Map& m) { return m.imuState().initialized; });
+        if (imu_ready) {  // temporal window along the prevKf chain, inertial + visual factors
+          std::vector<core::KeyframeId> window;
+          bool refined2 = false;
+          map->withReadLock([&](const map::Map& m) {
+            auto kf = m.keyframe(job.keyframe);
+            int n3d = 0;
+            if (kf) for (auto s : kf->mapPointSlots()) n3d += s.valid() ? 1 : 0;
+            const int large_threshold = raw->config.sensor == SensorMode::Mono ? 75 : 100;  // ORB-SLAM3 bLarge
+            const int size = n3d > large_threshold ? raw->config.backend.inertial_window_large : raw->config.backend.inertial_window;
+            while (kf && static_cast<int>(window.size()) < size) { window.push_back(kf->id()); kf = m.keyframe(kf->prevKf()); }
+            refined2 = m.imuState().refined2;
+            return 0;
+          });
+          std::reverse(window.begin(), window.end());
+          backend::InertialBaOptions bo;
+          bo.iterations = raw->config.backend.lba_iters;
+          bo.max_time_s = raw->config.execution == ExecutionMode::Offline ? 0.0 : raw->config.backend.lba_max_time_s;
+          bo.max_fixed_visual = raw->config.backend.inertial_max_fixed_visual;
+          bo.robust_imu = !refined2;
+          applied = raw->inertial_lba->run(*map, window, bo, st, newer).applied;
+        } else {
+          applied = raw->lba->run(*map, job.keyframe, st, newer).applied;
+        }
+        if (applied && raw->maps->events().hasSubscribers()) raw->maps->events().publish(MapPointsUpdatedEvent{map->id().value, map->changeEpoch()});
+        if (raw->imu_init) {
+          const auto step = raw->imu_init->step(*map, job.keyframe);
+          if (step.applied_scaled_rotation) raw->maps->events().publish(ImuInitializedEvent{map->id().value, step.scale});
+        }
+        const backend::LocalBundleAdjuster::Report rep{true, applied};
         if (rep.applied && raw->config.backend.kf_culling) {
           const auto removed = map->withWriteLock([&](map::Map& m) { return raw->culler->cull(m, job.keyframe); });
           for (auto k : removed) if (auto* pr = raw->maps->placeRecognizer()) pr->erase(k);

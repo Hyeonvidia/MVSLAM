@@ -5,6 +5,8 @@
 //        [--execution offline|realtime] [--save-map map.mvs] [--load-map map.mvs] [--localize-every N --localize-out loc.txt [--no-track 1]]
 //        [--start-frame N] [--localize-arm 1]   (start mid-sequence and relocalize into the loaded map, then keep tracking)
 //        [--pace F]   play at F x the dataset rate (sleep between frames by timestamp; 0 = as fast as possible) for live viewing
+//        [--blackout START:DURATION]   camera outage: frames in [START, START+DURATION] s after the first frame are fed as black images
+//                                      (the IMU keeps flowing) — inertial dead-reckoning / recovery test
 //        [--rerun out.rrd | --rerun rerun+http://host.docker.internal:9876/proxy] [--rerun-image-every N]
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -135,9 +137,9 @@ TumSequence readTum(const std::string& dir, double max_dt_s = 0.02) {
 
 int main(int argc, char** argv) {
   std::string config, euroc, kitti, kitti_calib, tum, out = "trajectory.txt", execution, overlay_dir, rerun_target, save_map, load_map, localize_out;
-  int overlay_every = 20, max_frames = 0, status_every = 200, status_from = 0, rerun_image_every = 5, localize_every = 0, start_frame = 0;
+  int overlay_every = 20, max_frames = 0, status_every = 200, status_from = 0, rerun_image_every = 5, localize_every = 0, start_frame = 0, blackout_frames = 0;
   bool no_track = false, localize_arm = false;
-  double pace = 0;
+  double pace = 0, blackout_start = -1, blackout_duration = 0;
   std::string log_level;
   for (int i = 1; i + 1 < argc; i += 2) {
     const std::string k = argv[i], v = argv[i + 1];
@@ -147,6 +149,7 @@ int main(int argc, char** argv) {
     else if (k == "--no-track") { no_track = v == "1" || v == "true"; }
     else if (k == "--start-frame") start_frame = std::stoi(v); else if (k == "--localize-arm") { localize_arm = v == "1" || v == "true"; }
     else if (k == "--pace") pace = std::stod(v);
+    else if (k == "--blackout") { const auto c = v.find(':'); blackout_start = std::stod(v.substr(0, c)); blackout_duration = c == std::string::npos ? 0 : std::stod(v.substr(c + 1)); }
     else if (k == "--out") out = v; else if (k == "--execution") execution = v;
     else if (k == "--overlay-dir") overlay_dir = v; else if (k == "--overlay-every") overlay_every = std::stoi(v);
     else if (k == "--max-frames") max_frames = std::stoi(v);
@@ -229,6 +232,10 @@ int main(int argc, char** argv) {
       cv::Mat l = cv::imread(left_dir + cam0[i].file, cv::IMREAD_GRAYSCALE);
       cv::Mat r;
       if (!cam1.empty() && i < cam1.size()) r = cv::imread(right_dir + cam1[i].file, cv::IMREAD_GRAYSCALE);
+      if (blackout_start >= 0 && !l.empty()) {  // camera outage: black images, IMU still delivered
+        const double rel = static_cast<double>(cam0[i].t - t0) * 1e-9;
+        if (rel >= blackout_start && rel < blackout_start + blackout_duration) { l.setTo(0); if (!r.empty()) r.setTo(0); ++blackout_frames; }
+      }
       if (l.empty()) continue;
       cv::Mat d;
       if (!depth_list.empty() && i < depth_list.size()) d = cv::imread(depth_dir + depth_list[i].file, cv::IMREAD_UNCHANGED);
@@ -280,6 +287,7 @@ int main(int argc, char** argv) {
       });
     }
     if (localize_every > 0) std::cout << "localization: " << loc_ok << " / " << loc_attempts << " frames localized\n";
+    if (blackout_frames > 0) std::cout << "blackout: " << blackout_frames << " frames fed as black images\n";
     std::ofstream of(out);
     of << std::fixed << std::setprecision(9);
     for (const auto& p : slam.trajectory())

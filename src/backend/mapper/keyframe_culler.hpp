@@ -8,16 +8,18 @@
 
 #include "map/map.hpp"
 #include "mvslam/api/config.hpp"
+#include "sensors/camera_rig.hpp"
 
 namespace mvslam::backend {
 
 class KeyframeCuller {
  public:
-  explicit KeyframeCuller(const Config& cfg) : cfg_(cfg) {}
+  explicit KeyframeCuller(const Config& cfg, const sensors::CameraRig* rig = nullptr) : cfg_(cfg), rig_(rig) {}
   // Runs inside the caller's write lock. Returns the ids removed.
   std::vector<core::KeyframeId> cull(map::Map& m, core::KeyframeId latest) const;
  private:
   Config cfg_;
+  const sensors::CameraRig* rig_;
 };
 
 }  // namespace mvslam::backend

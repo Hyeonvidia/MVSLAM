@@ -1,0 +1,30 @@
+# MVSLAM configuration — EuRoC MAV, monocular + IMU (body frame = IMU; cam0 extrinsics from the EuRoC calibration).
+schema: 1
+sensor: mono
+inertial: imu
+execution: offline
+rig:
+  cameras:
+    - model: pinhole
+      width: 752
+      height: 480
+      intrinsics: [458.654, 457.296, 367.215, 248.375]
+      distortion: [-0.28340811, 0.07395907, 0.00019359, 1.76187114e-05]
+      fps: 20
+      T_bc: [0.0148655429818, -0.999880929698, 0.00414029679422, -0.0216401454975,
+             0.999557249008, 0.0149672133247, 0.025715529948, -0.064676986768,
+             -0.0257744366974, 0.00375618835797, 0.999660727178, 0.00981073058949,
+             0.0, 0.0, 0.0, 1.0]
+  imu:
+    rate_hz: 200
+    noise_gyro: 1.7e-4
+    noise_acc: 2.0e-3
+    walk_gyro: 1.9393e-5
+    walk_acc: 3.0e-3
+    gravity: 9.81
+frontend: {clahe: true, detector_cell_px: 35, kf_min_parallax_px: 20.0}
+backend: {solver: ceres, lba_max_keyframes: 20, solver_threads: 1, kf_culling: false}  # mono-inertial: culling OFF (MH01 SE3 ATE 0.048 m vs 0.061 m with culling+merge); visual mono keeps it ON
+loop:
+  enable: true
+  recognizer: incremental   # none | incremental (HBST, no vocabulary) | dbow (P3)
+map: {multi_map: true}

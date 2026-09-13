@@ -12,6 +12,7 @@
 #include "core/image_buffer.hpp"
 #include "core/math/se3.hpp"
 #include "mvslam/api/types.hpp"
+#include "sensors/imu/preintegration.hpp"
 
 namespace mvslam::frontend {
 
@@ -52,6 +53,7 @@ struct KeyframeRequest {
   core::ImageBuffer right_raw;      // stereo only
   core::ImageBuffer depth;          // rgbd only
   bool initial = false;             // first keyframe of a map (stereo/rgbd bootstrap)
+  std::shared_ptr<const sensors::imu::Preintegration> preint_from_last_kf;  // inertial: IMU integral since the previous keyframe
   // Mono bootstrap: a complete two-view initial map (poses + points), inserted verbatim by the mapper.
   struct InitialMap {
     core::KeyframeId first_kf;
@@ -114,10 +116,28 @@ class IRobustPoseSolver {
 
 struct PoseOptimizationResult { bool ok = false; int inliers = 0; double chi2 = 0; };
 
+// Last keyframe state + IMU integral from it to the frame (pose-inertial optimization, docs/design/02 §2.4).
+struct InertialAnchor {
+  bool valid = false;
+  // Last keyframe (current map state) and the IMU integral from it to the frame (ORB-SLAM3 CASE A).
+  core::SE3 T_wb;
+  core::Vec3 v_w = core::Vec3::Zero();
+  core::Vec6 bias = core::Vec6::Zero();
+  std::shared_ptr<const sensors::imu::Preintegration> preint;
+  // Last frame state and the integral since it (CASE B, used with the marginalized prior when the map
+  // did not change and the last frame was tracked successfully).
+  bool last_ok = false, map_updated = true;
+  core::SE3 T_wb_last;
+  core::Vec3 v_last = core::Vec3::Zero();
+  core::Vec6 bias_last = core::Vec6::Zero();
+  std::shared_ptr<const sensors::imu::Preintegration> preint_last_frame;
+};
+
 class IPoseOptimizer {  // implemented in backend/, see backend/pose_optimizer.hpp
  public:
   virtual ~IPoseOptimizer() = default;
   virtual PoseOptimizationResult optimize(Frame& frame, double max_time_ms) = 0;
+  virtual void setInertialAnchor(const InertialAnchor*) {}  // inertial implementations only
 };
 
 class IKeyframePolicy {

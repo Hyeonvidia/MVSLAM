@@ -9,6 +9,7 @@
 
 #include "core/ids.hpp"
 #include "core/math/se3.hpp"
+#include "sensors/imu/preintegration.hpp"
 
 namespace mvslam::map {
 
@@ -23,8 +24,6 @@ struct Keypoint {
   core::Vec2 uv_right = core::Vec2::Zero();
   bool outlier = false;       // marked by BA; excluded from further optimization
 };
-
-struct ImuPreintegrationData;  // defined in backend/imu; stored by pointer to keep map free of backend types
 
 class KeyFrame {
  public:
@@ -44,6 +43,9 @@ class KeyFrame {
   const std::vector<std::uint8_t>& descriptors() const { return descriptors_; }
   std::vector<core::MapPointId>& mapPointSlots() { return map_point_slots_; }  // index == keypoint index
   const std::vector<core::MapPointId>& mapPointSlots() const { return map_point_slots_; }
+  // IMU preintegration from prevKf() to this keyframe (null before the first keyframe / without IMU).
+  const std::shared_ptr<const sensors::imu::Preintegration>& preintegration() const { return preint_; }
+  void setPreintegration(std::shared_ptr<const sensors::imu::Preintegration> p) { preint_ = std::move(p); }
 
   core::KeyframeId parent() const { return parent_; }
   void setParent(core::KeyframeId p) { parent_ = p; }
@@ -69,6 +71,7 @@ class KeyFrame {
   std::vector<Keypoint> keypoints_;
   std::vector<std::uint8_t> descriptors_;
   std::vector<core::MapPointId> map_point_slots_;
+  std::shared_ptr<const sensors::imu::Preintegration> preint_;
   core::KeyframeId parent_, prev_, next_;
   std::set<core::KeyframeId> children_, loop_edges_;
   bool bad_ = false;

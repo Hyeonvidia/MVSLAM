@@ -2,6 +2,8 @@
 
 #include <set>
 
+#include "sensors/imu/preintegration.hpp"
+
 namespace mvslam::backend {
 
 std::vector<core::KeyframeId> KeyframeCuller::cull(map::Map& m, core::KeyframeId latest) const {
@@ -26,6 +28,21 @@ std::vector<core::KeyframeId> KeyframeCuller::cull(map::Map& m, core::KeyframeId
       if (mp->numObservations() - 1 >= cfg_.backend.kf_cull_min_other_observers) ++redundant;
     }
     if (total >= 20 && redundant > redundancy * total) {
+      // Inertial maps: the successor's IMU integral must absorb the culled interval (ORB-SLAM3 MergePrevious),
+      // and the merged gap stays short (3 s after the second refinement, 0.5 s before it).
+      const bool inertial = rig_ && rig_->hasImu() && m.imuState().initialized;
+      if (inertial) {
+        auto prev_kf = m.keyframe(ckf->prevKf());
+        auto next_kf = m.keyframe(ckf->nextKf());
+        if (!prev_kf || !next_kf || !ckf->preintegration() || !next_kf->preintegration()) continue;
+        const double gap = static_cast<double>(next_kf->timestamp() - prev_kf->timestamp()) * 1e-9;
+        if (gap > (m.imuState().refined2 ? 3.0 : 0.5)) continue;
+        sensors::imu::Preintegrator merged(rig_->imu());
+        merged.reset(next_kf->preintegration()->bias_lin);
+        for (const auto& mm : next_kf->preintegration()->measurements) merged.integrate(mm.acc, mm.gyro, mm.dt);
+        merged.mergePrevious(*ckf->preintegration());
+        next_kf->setPreintegration(merged.snapshot());
+      }
       map::Map::CulledRecord rec;
       rec.T_wc_at_cull = ckf->T_wb();
       for (auto ref : {ckf->parent(), ckf->prevKf(), ckf->nextKf()}) {  // first live reference wins (parent is oldest)

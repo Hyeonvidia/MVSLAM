@@ -79,6 +79,8 @@ def main():
     ap.add_argument('--max-dt', type=float, default=0.01)
     ap.add_argument('--times', help='KITTI times.txt (selects the KITTI pose format for --gt)')
     ap.add_argument('--gt-format', choices=['euroc', 'tum'], default='euroc')
+    ap.add_argument('--segments', type=int, default=0, help='also report RMSE per time segment (drift diagnostics)')
+    ap.add_argument('--exclude', help='START:END seconds after the first estimated pose to leave out (e.g. a camera outage)')
     a = ap.parse_args()
     if a.times:
         t_gt, p_gt = load_kitti_gt(a.gt, a.times)
@@ -90,6 +92,10 @@ def main():
     if len(t_est) == 0:
         print(json.dumps({'error': 'empty trajectory'}))
         sys.exit(1)
+    if a.exclude:
+        s0, s1 = [float(x) for x in a.exclude.split(':')]
+        keep = ~((t_est - t_est[0] >= s0) & (t_est - t_est[0] <= s1))
+        t_est, p_est = t_est[keep], p_est[keep]
     ie, ig = associate(t_est, t_gt, a.max_dt)
     if len(ie) < 3:
         print(json.dumps({'error': 'too few associations', 'pairs': int(len(ie))}))
@@ -101,6 +107,9 @@ def main():
            'coverage': float((t_est[-1] - t_est[0]) / (t_gt[-1] - t_gt[0])), 'scale': float(s),
            'ate_rmse_m': float(np.sqrt((err ** 2).mean())), 'ate_mean_m': float(err.mean()),
            'ate_median_m': float(np.median(err)), 'ate_max_m': float(err.max())}
+    if a.segments > 1:
+        edges = np.linspace(0, len(err), a.segments + 1).astype(int)
+        out['segment_rmse_m'] = [float(np.sqrt((err[edges[i]:edges[i + 1]] ** 2).mean())) for i in range(a.segments)]
     print(json.dumps(out))
 
 

@@ -4,6 +4,10 @@
 // machine. Runs on the caller thread; reads the map under its read lock only.
 #include <memory>
 
+#include <mutex>
+#include <optional>
+
+#include "frontend/imu_predictor.hpp"
 #include "frontend/interfaces.hpp"
 #include "frontend/relocalizer.hpp"
 #include "frontend/tracking_state_machine.hpp"
@@ -33,8 +37,11 @@ class VisualFrontend {
  public:
   VisualFrontend(FrontendConfig cfg, SensorMode sensor, bool inertial, FrontendComponents c,
                  const sensors::CameraRig& rig, map::MapStore& maps);
-  // Returns the result and, when a keyframe was decided, fills `kf_request`.
-  TrackResult process(const FrameInput& input, std::optional<KeyframeRequest>& kf_request);
+  // Returns the result and, when a keyframe was decided, fills `kf_request`. `imu`: samples with
+  // timestamps in (previous frame, this frame] (ignored without IMU).
+  TrackResult process(const FrameInput& input, const std::vector<ImuSample>& imu, std::optional<KeyframeRequest>& kf_request);
+  TrackResult process(const FrameInput& input, std::optional<KeyframeRequest>& kf_request) { return process(input, {}, kf_request); }
+  ~VisualFrontend();
   const Frame& lastFrame() const { return last_; }
   TrackingState state() const { return sm_.state(); }
   void setOptimizerBusy(bool b) { optimizer_busy_ = b; }
@@ -54,6 +61,10 @@ class VisualFrontend {
   int countOccupiedCells(const Frame& f) const;
   bool tryRelocalize(Frame& cur, const std::shared_ptr<ImageState>& image, const FrameInput& input, bool all_maps);
   void adoptRelocalization(Frame& cur, const RelocalizationResult& rr, Timestamp t);
+  void integrateImu(const std::vector<ImuSample>& imu, Timestamp t_frame);
+  void resetImuFromKeyframe(const Frame& kf_frame);
+  void applyMapTransform(Frame& cur);
+  bool imuInitialized() const { return imu_initialized_; }
 
   FrontendConfig cfg_;
   SensorMode sensor_;
@@ -73,6 +84,20 @@ class VisualFrontend {
   bool optimizer_busy_ = false;
   int reloc_armed_ = 0;
   int lost_frames_ = 0;   // consecutive frames with a failed pose estimate
+  // ---- inertial state (only with an IMU) ----
+  bool inertial_ = false;
+  bool imu_initialized_ = false;
+  bool anchor_valid_from_kf_ = true;   // false after relocalization until the next keyframe
+  bool last_ok_ = false, transformed_since_last_ = false;
+  std::unique_ptr<sensors::imu::Preintegrator> preint_kf_, preint_frame_;  // since the last keyframe / the last frame
+  std::optional<ImuSample> last_imu_;
+  Timestamp last_frame_t_ = 0;
+  ImuPredictor* imu_predictor_ = nullptr;   // c_.predictor when it is an ImuPredictor
+  InertialAnchor anchor_;
+  std::shared_ptr<const sensors::imu::Preintegration> preint_frame_snapshot_;
+  std::mutex transform_mu_;
+  std::optional<double> pending_scale_;      // ImuInitializedEvent: the map was rescaled/rotated
+  Subscription map_events_;
   std::optional<Result<Pose>> reloc_outcome_;
 };
 
