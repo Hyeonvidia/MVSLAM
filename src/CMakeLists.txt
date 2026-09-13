@@ -1,0 +1,18 @@
+add_subdirectory(core)
+add_subdirectory(sensors)
+add_subdirectory(map)
+add_subdirectory(frontend)
+add_subdirectory(backend)
+add_subdirectory(pipelines)
+add_subdirectory(api)
+
+# Single library (cuVSLAM-style packaging): all module objects merged into libmvslam.
+set(_lib_type STATIC)
+if(MVSLAM_SHARED)
+  set(_lib_type SHARED)
+endif()
+add_library(mvslam ${_lib_type})
+add_library(mvslam::mvslam ALIAS mvslam)
+target_link_libraries(mvslam PUBLIC mvslam::core mvslam::sensors mvslam::map mvslam::frontend mvslam::backend mvslam::pipelines mvslam::api)
+target_include_directories(mvslam PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
+set_target_properties(mvslam PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})

@@ -1,0 +1,16 @@
+schema: 1
+sensor: rgbd
+inertial: none
+execution: offline
+rig:
+  cameras:
+    - model: pinhole
+      width: 640
+      height: 480
+      intrinsics: [517.306408, 516.469215, 318.643040, 255.313989]
+      distortion: [0.262383, -0.953104, -0.005358, 0.002628, 1.163314]
+      fps: 30
+frontend: {clahe: false, rgbd_virtual_baseline_m: 0.08, min_depth_m: 0.3, max_depth_m: 8.0, detector_cell_px: 30}
+backend: {solver: ceres, solver_threads: 1}
+loop: {enable: true, recognizer: none}
+map: {multi_map: true}

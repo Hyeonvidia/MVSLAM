@@ -1,0 +1,6 @@
+add_library(mvslam_core OBJECT log.cpp)
+add_library(mvslam::core ALIAS mvslam_core)
+target_include_directories(mvslam_core PUBLIC "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(mvslam_core PUBLIC Eigen3::Eigen mvslam::sophus spdlog::spdlog)
+target_compile_definitions(mvslam_core PUBLIC SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
+mvslam_set_warnings(mvslam_core)

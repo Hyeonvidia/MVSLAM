@@ -1,0 +1,16 @@
+schema: 1
+sensor: mono
+inertial: none
+execution: offline
+rig:
+  cameras:
+    - model: pinhole
+      width: 752
+      height: 480
+      intrinsics: [458.654, 457.296, 367.215, 248.375]
+      distortion: [-0.28340811, 0.07395907, 0.00019359, 1.76187114e-05]
+      fps: 20
+frontend: {clahe: true, detector_cell_px: 35, kf_min_parallax_px: 20.0}
+backend: {solver: ceres, lba_max_keyframes: 20, solver_threads: 1}
+loop: {enable: true, recognizer: none}
+map: {multi_map: true}
