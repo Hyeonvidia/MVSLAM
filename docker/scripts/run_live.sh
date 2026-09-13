@@ -8,7 +8,7 @@ kind=${1:?euroc|kitti|tum}; seq=${2:?dataset}; cfg=${3:?config}
 preset=${4:-docker-release}; pace=${5:-1.0}
 shift "$(( $# < 5 ? $# : 5 ))"
 cd /workspace
-rerun --serve-web --port 9876 --web-viewer-port 9090 --bind 0.0.0.0 > /results/rerun_server.log 2>&1 &
+rerun --serve-web --port 9877 --web-viewer-port 9090 --bind 0.0.0.0 > /results/rerun_server.log 2>&1 &
 viewer=$!
 trap 'kill $viewer 2>/dev/null || true' EXIT
 sleep 2
@@ -20,6 +20,6 @@ case "$kind" in
   *) echo "unknown dataset kind $kind" >&2; exit 2 ;;
 esac
 "build/$preset/bin/mvslam_dataset_runner" --config "$cfg" "${src[@]}" --out "/results/live_traj.txt" --execution realtime --pace "$pace" \
-  --rerun rerun+http://127.0.0.1:9876/proxy --rerun-image-every 4 "$@"
+  --rerun rerun+http://127.0.0.1:9877/proxy --rerun-image-every 4 "$@"
 echo "run finished; the web viewer stays up (Ctrl-C to stop)"
 wait $viewer

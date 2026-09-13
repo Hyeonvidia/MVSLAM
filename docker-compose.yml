@@ -17,7 +17,7 @@ services:
       - "host.docker.internal:host-gateway"   # live Rerun viewer on the host: --rerun rerun+http://host.docker.internal:9876/proxy
     ports:                                     # published only with `docker compose run --service-ports` (scripts/docker.sh live)
       - "9090:9090"                            # Rerun web viewer (browser on the host: http://localhost:9090)
-      - "9876:9876"                            # Rerun gRPC server (the web viewer connects back through this port)
+      - "9877:9877"                            # Rerun gRPC server of the in-container viewer (9876 stays free for a native host viewer)
     environment:
       - CCACHE_DIR=/ccache
     volumes:
