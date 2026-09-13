@@ -13,6 +13,8 @@ services:
     platform: linux/arm64
     shm_size: 2gb
     working_dir: /workspace
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # live Rerun viewer on the host: --rerun rerun+http://host.docker.internal:9876/proxy
     environment:
       - CCACHE_DIR=/ccache
     volumes:

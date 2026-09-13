@@ -5,6 +5,9 @@ add_subdirectory(frontend)
 add_subdirectory(backend)
 add_subdirectory(pipelines)
 add_subdirectory(api)
+if(MVSLAM_WITH_RERUN)
+  add_subdirectory(platform/viz)
+endif()
 
 # Single library (cuVSLAM-style packaging): all module objects merged into libmvslam.
 set(_lib_type STATIC)

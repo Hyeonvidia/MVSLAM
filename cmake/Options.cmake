@@ -6,6 +6,7 @@ option(MVSLAM_WITH_GTSAM  "Build the GTSAM solver adapter (optional, 4.3 alpha)"
 option(MVSLAM_BUILD_TESTS "Build unit/integration tests (GoogleTest)" ON)
 option(MVSLAM_BUILD_APPS  "Build dataset runner and tools" ON)
 option(MVSLAM_BUILD_BENCH "Build micro-benchmarks (google/benchmark)" OFF)
+option(MVSLAM_WITH_RERUN  "Build the Rerun viewer sink (mvslam::viz_rerun, apps only; the core stays viewer-free)" OFF)
 option(MVSLAM_SHARED      "Build libmvslam as a shared library (single library packaging)" OFF)
 option(MVSLAM_WERROR      "Treat warnings as errors for mvslam targets" OFF)
 option(MVSLAM_LTO         "Enable interprocedural optimization for Release" OFF)

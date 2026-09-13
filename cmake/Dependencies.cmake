@@ -135,3 +135,9 @@ if(MVSLAM_WITH_GTSAM)
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
   add_subdirectory("${MVSLAM_THIRD_PARTY}/gtsam" EXCLUDE_FROM_ALL)
 endif()
+
+# ---- Rerun C++ SDK (viewer sink only; find_package on an installed SDK, docker image: /opt/rerun) ----
+if(MVSLAM_WITH_RERUN)
+  find_package(rerun_sdk CONFIG REQUIRED)
+  message(STATUS "rerun_sdk ${rerun_sdk_VERSION} found: ${rerun_sdk_DIR}")
+endif()
