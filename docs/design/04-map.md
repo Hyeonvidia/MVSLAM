@@ -10,6 +10,8 @@
 | `MapPoint` | `Map`이 `shared_ptr`로 소유 | KF는 `vector<MapPointId>`(트랙 슬롯 인덱스 = 관측 인덱스) |
 | 삭제 | `markBad()` → tombstone(즉시 그래프에서 분리) → `Map::reclaim(epoch)`이 **참조 epoch가 지난 tombstone을 실제 해제** | ORB의 "delete 없음 = 무한 누적" 대신 상한 보장. 워커는 자기 epoch를 `Map`에 등록(읽기 시작/끝) |
 | `Frame` | 프론트엔드 내부, 값 타입 | KF 승격 시 필요한 필드만 복사 |
+| 트랙 alias | `Map::addTrackAlias(track, mp)` / `resolveTrack(track)`(체인 추적) | 로컬맵 매칭이 2-D 트랙을 기존 MP에 병합할 때 기록. `TrackId ≡ MapPointId` 규약 아래에서 '같은 점의 두 id'를 잇는 유일한 통로; 프론트엔드는 `refreshTracksFromMap`에서, Mapper는 KF 삽입에서 해석한다 |
+| culled KF 기록 | `Map::CulledRecord{reference, T_rc, T_wc_at_cull}` / `resolvePose(kf)` | culling으로 사라진 KF의 pose를 살아 있는 참조 KF(spanning tree 부모 → prev → next 순으로 첫 생존자) 기준으로 보존. `resolvePose`는 참조가 또 culled면 체인을 따라가고(origin은 culling 대상이 아니므로 종료 보장), 참조가 없으면 culling 시점 절대 pose |
 
 ## 2. 클래스
 ```mermaid
@@ -32,6 +34,7 @@ classDiagram
 - `CovisibilityGraph::update(kf)`: 공유 MP 수 집계(**같은 맵 KF만**, ORB `GetMap()` 필터), 가중치 ≥ 15 간선, 첫 연결 시 최대 공시 KF를 spanning tree 부모로. `essentialSubgraph`: spanning tree + loop edge + 가중 ≥ 100(+관성 prev/next 간선).
 - `KeyFrame::keypoints`: `vector<Keypoint{uv, uv_undist, level(0 for KLT), track_id}>`, `descriptors: cv::Mat`은 **map 모듈 밖 타입이라 `std::vector<uint8_t>`(N×32) + stride**로 저장(공개 헤더·직렬화 독립).
 - `MapPoint::observations`의 값은 `{slot_index, cam_index}` — fisheye/다중 카메라의 좌/우 관측을 같은 KF 안에서 구분(ORB tuple<left,right> 일반화).
+- `Map::removeKeyFrame`(culling): 관측 제거(anchor는 남은 최초 관측 KF로 이전 — `MapPoint::removeObservation`) → 관측이 < 2로 떨어진 MP 제거(ORB `EraseObservation`) → spanning tree 자식 재부모화 → prev/next 재연결 → covisibility 간선 제거 → tombstone.
 
 ## 3. 다중 맵(MapStore, Atlas-lite)
 | 동작 | 규칙 |

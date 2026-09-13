@@ -36,3 +36,8 @@
 | `-march=native` 금지 | `분석/02` §7.1(OV²SLAM), ORB_SLAM3_Modern R1, cuVSLAM 설계 분석 §9.5 |
 | 공개 헤더 POD·pimpl, C ABI 후순위 | VIGIL architecture.md §3 |
 | dense mapping은 훅만 | `분석/07` §7.1 `[INFER]`(keyframe-anchored submap — 외부 지식, 미검증) |
+| KF 시점 검출을 프론트엔드로 이동 | P0 구현: Realtime에서 트랙 id가 한 KF 늦게 생기는 문제(설계 02 §2.7 DIFF) |
+| 로컬맵 매칭 = 트랙 alias(병합 대신) | `TrackId ≡ MapPointId` 규약(`분석/06` §6.4 OV²SLAM lmid)과 양립하는 유일한 병합 수단; MH01 실측 0.047 → 0.032 m |
+| 단안 초기화 E는 5-pt USAC_ACCURATE | 단위 테스트 실측: 8-pt/5-pt RANSAC 최소표본 해의 회전 오차 ~0.4°(0.2 px 잡음) → 삼각측량 오차 수십 cm |
+| KF culling 기본 OFF | MH01 stereo 실측(670→28 KF, ATE 0.032→0.257 m), OV²SLAM도 KF culling 없음(`분석/02` §3) — [ADR-0009](../adr/0009-keyframe-culling-off-for-klt.md) |
+| LBA robust 비용 발산 가드 + depth 사전 필터 | MH01 실측: χ² `inf`로 가드 무력화 → 프레임 1380 추적 상실; Ceres 초기 평가 실패 시 LBA 전체 무효(`Initial residual and Jacobian evaluation failed`) |

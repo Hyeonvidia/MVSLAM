@@ -67,17 +67,19 @@ classDiagram
 | 항목 | 설계 |
 |---|---|
 | 윈도우 전략 `IWindowSelector` | `CovisibilityWindow{max_kf=20}`: 현재 KF + covisible KF(공유 ≥ 15) 상위 N, 나머지 관측 KF 고정(ORB — **상한 추가**, `분석/00` "시각 LBA 상한 없음"); `CovScoreWindow{min_cov=25}`: OV²SLAM 정렬 순회 절단; `TemporalWindow{N=10, N_large=25, max_fixed_visual=200}`: 관성(ORB) |
-| 점 파라미터화 | 기본 `AnchoredInvDepth`(anchor = 최초 관측 KF; 윈도우 밖 anchor면 XYZ) |
+| 점 파라미터화 | 설계: `AnchoredInvDepth`(anchor = 최초 관측 KF; 윈도우 밖 anchor면 XYZ). **P0 구현은 XYZ**(`backend.anchored_inverse_depth` 키는 예약, 관성 단계에서 도입) |
 | 솔버 옵션 | `SPARSE_SCHUR`, LM, 시각 10 iter / 관성 10(large 4), **시간 상한 0.2 s**, `StopToken`(새 KF 도착 시 Mapper가 신호) |
 | robust/outlier | Huber χ² 5.991(mono)/7.815(stereo) → 제거 → L2 재정련(옵션) → 2차 제거; 관성 factor kernel 없음 |
-| 발산 감지 | 전후 robust χ² 비교, 악화 시 결과 폐기(ORB `LocalInertialBA`) |
+| 발산 감지 | 전후 **robust 비용**(Huber 적용값) 비교, 5% 이상 악화 시 결과 폐기(ORB `LocalInertialBA`). 순수 χ²로 비교하면 outlier 하나가 `inf`를 만들어 가드가 무력화된다(P0 실측) |
+| 사전 필터 | 스냅샷 시 어떤 관측 KF에서든 depth ≤ 0인 관측은 문제에 넣지 않고 outlier로 기록(write-back에서 관측 제거, 관측 < 2면 MP 제거). Ceres는 초기 잔차 평가가 실패하면 반복을 시작하지 않고 종료하므로(`Initial residual and Jacobian evaluation failed`) 이 필터 없이는 점 하나가 LBA 전체를 무효화한다 |
 | write-back | 최적화는 사본으로, 결과는 `Map::withWriteLock`에서 일괄 반영 + `changeEpoch++` + `MapPointsUpdated` 이벤트 |
 
 ## 3. Mapper (`src/backend/mapper/`)
-- `Triangulator`: temporal(가장 오래된 관측 KF 기준 DLT, cos-parallax < 0.9998, 양측 χ² 5.991/7.8, 스케일 일관성) + 깊이 소스(stereo/rgbd) 즉시 MP.
-- `LocalMapMatcher`: 로컬맵 MP 투영(2 px) + descriptor 최소거리(≤ 0.2×256 bit) + ratio 0.9 → 트랙 병합(`MapPoint::merge`) — 끊긴 KLT 트랙 재연결(drift 억제). 새 KF 도착 시 조기 종료.
-- `MapPointCuller`: found ratio < 0.25 또는 생성 후 2 KF 내 관측 ≤ 2(mono)/3 → tombstone.
-- `KeyframeCuller`: 점의 90%(stereo-I 50%)가 다른 ≥ 3 KF에서 같거나 fine 스케일로 관측 → 제거; 관성: 최근 2 KF 보호, 병합 후 간격 < 3 s(초기화 후 0.5 s), preintegration `mergePrevious`(재적분); **anchor 이전**은 `MapPoint::onKeyframeRemoved`에서 다음 관측 KF로(OV²SLAM `removeKfObs`).
+- 처리 순서(`Mapper::process`, write lock 1회): (초기 맵이면 첫 KF·점 삽입) → KF 삽입·prev/next 연결 → 키포인트마다 `Map::resolveTrack`(alias 반영)으로 MP 조회 → 기존 MP면 관측 추가 + descriptor 갱신 / depth > 0이면 즉시 MP / 아니면 pending 2-D 관측 등록 후 temporal 삼각측량 → covisibility → `LocalMapMatcher` → MP culling.
+- 삼각측량(temporal): pending 관측 중 **가장 오래된 KF와 새 KF**의 두 광선 최근접 중점, parallax ≥ `triangulation_min_parallax_deg`(1°), 양쪽 재투영 ≤ `triangulation_max_reproj_px`(3 px), depth > `min_depth_m`. 성공 시 pending 관측 전부를 관측으로 등록(anchor = 최초 관측 KF). 10 KF 넘게 잠든 pending 트랙은 폐기. 깊이 소스(stereo/rgbd)가 있는 트랙은 즉시 MP.
+- `LocalMapMatcher`(KF 시점, write lock 안): 로컬 KF = 새 KF의 covisible 상위 `local_match_max_keyframes`(20) ∪ prevKf 체인 3개; 이들이 보는 MP 중 새 KF가 관측하지 않는 것을 새 KF pose로 투영 → 반경 `local_match_radius_px`(5) 안의 **미추적 키포인트**(2-D 트랙, 기술자 있음)와 ORB Hamming 최소거리 ≤ `local_match_max_hamming`(50), 2위 대비 ratio 0.8, 키포인트당 1 MP. 채택 시 (a) 관측 추가, (b) **트랙 alias**(2-D 트랙 id → 기존 MP id)를 맵에 기록 — 프론트엔드가 다음 프레임 `refreshTracksFromMap`에서 살아 있는 KLT 트랙 id를 바꿔 이어 붙이고(`TrackId ≡ MapPointId` 규약을 지키는 병합 수단), Mapper는 이후 KF에서 같은 트랙을 중복 삼각측량하지 않는다, (c) 그 트랙의 pending 2-D 관측 중 재투영 ≤ 3 px인 것을 MP 관측으로 **이관**. 실측(MH01 stereo Offline): ATE 0.047 → 0.032 m.
+- MP culling: 생성 후 `mp_cull_grace_keyframes`(3) KF가 지난 시점에 관측 < `mp_cull_min_observations`(2)면 제거. (found ratio 기준은 프론트엔드가 로컬맵 MP를 프레임마다 재투영하지 않으므로 P0에서는 정의되지 않음.)
+- `KeyframeCuller`(ORB 규칙: 새 KF의 covisible 중, 점의 `kf_cull_redundancy` 90%(stereo-I 50%)가 다른 ≥ `kf_cull_min_other_observers`(3) KF에서 관측되면 제거; 직전 KF 이후 전부·맵 origin 보호). **기본 OFF**(`backend.kf_culling: false`, [ADR-0009](../adr/0009-keyframe-culling-off-for-klt.md)): KLT 트랙은 연속 KF 10여 개에서 관측되므로 이 규칙은 거의 모든 KF를 잉여로 판정한다 — MH01 stereo에서 670 KF 중 28개만 남고 ATE 0.032 → 0.257 m. 제거 시 관측이 < 2로 떨어진 MP도 함께 제거(ORB `EraseObservation` 의미론), culled KF는 **참조 KF(spanning tree 부모) 기준 상대 pose 기록**을 남겨 궤적 재구성이 백엔드 보정을 계속 따른다(ORB `mTcp`). 관성 규칙(간격 < 3 s, `mergePrevious`)은 P2.
 
 ## 4. IMU (`src/backend/imu/`)
 - `Preintegrator`(double): ORB `IntegrateNewMeasurement` 수식 — ΔP→ΔV→ΔR 순, 9×9 공분산 + 6×6 RW, bias Jacobian 5종, `deltaWithBias(b)` 1차 보정, `reintegrate()`(bias 변화 > 임계 시 자동 — cuVSLAM), `mergePrevious()`. 원시 측정 보관(직렬화·재적분용).

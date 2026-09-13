@@ -28,12 +28,24 @@ scripts/docker.sh image          # 이미지 빌드 (ubuntu:24.04 툴체인 + �
 scripts/docker.sh build          # docker-release: configure + build + ctest
 scripts/docker.sh run configs/euroc_stereo_imu.yaml EuRoC/MH01 docker-release /results/MH01_traj.txt --execution offline
                                  # ../Datasets 를 /datasets 로 읽기 전용 마운트, 결과는 results/ (--execution offline = 결정적 평가 모드)
+scripts/docker.sh eval EuRoC/MH01 /results/MH01_traj.txt            # ATE(SE3; mono는 --sim3)
+scripts/docker.sh kitti configs/kitti_stereo.yaml 00 docker-release /results/kitti_00.txt --execution offline
+scripts/docker.sh eval-kitti 00 /results/kitti_00.txt
 scripts/docker.sh tsan           # ThreadSanitizer 빌드/테스트
 scripts/docker.sh shell          # 컨테이너 셸
 ```
 - 요구: Docker(compose v2). 이미지 안: CMake 3.28, gcc-13/clang, Ninja, ccache, OpenCV 4.6.
 - 프리셋: `docker-release` / `docker-full`(g2o+GTSAM 어댑터) / `docker-asan` / `docker-tsan`. `macos-*`·`ios-*`·`jetson-*` 프리셋은 플랫폼 이식 검증용.
 - 옵션: `MVSLAM_WITH_G2O`, `MVSLAM_WITH_GTSAM`, `MVSLAM_SANITIZER=asan|tsan`, `MVSLAM_SHARED`, `MVSLAM_OPENCV_SOURCE=auto|system|submodule|none`.
+
+## P0 결과 (Offline, docker-release, Apple M4 컨테이너, 2026-09-14)
+| 시퀀스 | 모드 | ATE RMSE | 프론트엔드 | 비고 |
+|---|---|---|---|---|
+| EuRoC MH01 | stereo | **0.032 m** (SE3) | 3.4 ms/frame | 게이트 ≤ 0.06 m 달성, 2회 실행 궤적 SHA 동일 |
+| EuRoC MH01 | mono | 0.142 m (Sim3, scale 3.70) | 2.7 ms/frame | 두 시점 H/E 초기화, 루프 클로징 없음 |
+| KITTI 00 | stereo | 4.99 m (SE3, 3.7 km) | 4.9 ms/frame | 루프 클로징 없음(P3) |
+
+러너 옵션: `--euroc <mav0>` 또는 `--kitti <sequences/NN> [--kitti-calib calib.txt]`(P0/P1로 rig 자동 설정), `--out`, `--execution offline|realtime`, `--max-frames N`, `--status-every N`, `--overlay-dir DIR [--overlay-every N]`(트랙 오버레이 PNG: 초록 3D/노랑 2D), `--log-level debug`.
 
 ## 사용 예
 ```cpp
