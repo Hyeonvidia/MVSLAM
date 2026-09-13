@@ -1,0 +1,13 @@
+# build trees
+build/
+build-*/
+cmake-build-*/
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+# generated
+compile_commands.json
+*.log
+results/*
+!results/.gitkeep

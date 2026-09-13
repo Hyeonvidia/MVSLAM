@@ -1,0 +1,44 @@
+[submodule "third_party/sophus"]
+	path = third_party/sophus
+	url = https://github.com/strasdat/Sophus.git
+	shallow = true
+[submodule "third_party/eigen"]
+	path = third_party/eigen
+	url = https://gitlab.com/libeigen/eigen.git
+	shallow = true
+[submodule "third_party/ceres-solver"]
+	path = third_party/ceres-solver
+	url = https://github.com/ceres-solver/ceres-solver.git
+	shallow = true
+[submodule "third_party/g2o"]
+	path = third_party/g2o
+	url = https://github.com/RainerKuemmerle/g2o.git
+	shallow = true
+[submodule "third_party/gtsam"]
+	path = third_party/gtsam
+	url = https://github.com/borglab/gtsam.git
+	shallow = true
+[submodule "third_party/yaml-cpp"]
+	path = third_party/yaml-cpp
+	url = https://github.com/jbeder/yaml-cpp.git
+	shallow = true
+[submodule "third_party/spdlog"]
+	path = third_party/spdlog
+	url = https://github.com/gabime/spdlog.git
+	shallow = true
+[submodule "third_party/googletest"]
+	path = third_party/googletest
+	url = https://github.com/google/googletest.git
+	shallow = true
+[submodule "third_party/cereal"]
+	path = third_party/cereal
+	url = https://github.com/USCiLab/cereal.git
+	shallow = true
+[submodule "third_party/benchmark"]
+	path = third_party/benchmark
+	url = https://github.com/google/benchmark.git
+	shallow = true
+[submodule "third_party/opencv"]
+	path = third_party/opencv
+	url = https://github.com/opencv/opencv.git
+	shallow = true
