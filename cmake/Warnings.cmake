@@ -2,7 +2,8 @@
 function(mvslam_set_warnings target)
   target_compile_options(${target} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic -Wshadow -Wnon-virtual-dtor
-      -Wold-style-cast -Wcast-align -Wunused -Woverloaded-virtual -Wnull-dereference -Wdouble-promotion>
+      -Wold-style-cast -Wcast-align -Wunused -Woverloaded-virtual -Wdouble-promotion>
+    # -Wnull-dereference is omitted: GCC 13 reports false positives inside Eigen/NEON headers at -O2.
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->)
   if(MVSLAM_WERROR)
     target_compile_options(${target} PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Werror> $<$<CXX_COMPILER_ID:MSVC>:/WX>)

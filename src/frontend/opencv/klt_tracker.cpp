@@ -16,10 +16,11 @@ void fbKlt(const std::vector<cv::Mat>& prev_pyr, const std::vector<cv::Mat>& cur
   const cv::TermCriteria crit(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01);
   cv::calcOpticalFlowPyrLK(prev_pyr, cur_pyr, prev_pts, cur_pts, status, err, cv::Size(win, win), levels, crit,
                            cv::OPTFLOW_USE_INITIAL_FLOW | cv::OPTFLOW_LK_GET_MIN_EIGENVALS, 1e-4);
-  std::vector<cv::Point2f> back;
+  std::vector<cv::Point2f> back = prev_pts;  // backward pass refines from the original position (level 0 only)
   std::vector<unsigned char> bstatus;
   std::vector<float> berr;
-  cv::calcOpticalFlowPyrLK(cur_pyr, prev_pyr, cur_pts, back, bstatus, berr, cv::Size(win, win), 0, crit, 0, 1e-4);
+  cv::calcOpticalFlowPyrLK(cur_pyr, prev_pyr, cur_pts, back, bstatus, berr, cv::Size(win, win), 0, crit,
+                           cv::OPTFLOW_USE_INITIAL_FLOW | cv::OPTFLOW_LK_GET_MIN_EIGENVALS, 1e-4);
   const int w = cur_pyr[0].cols, h = cur_pyr[0].rows;
   for (std::size_t i = 0; i < prev_pts.size(); ++i) {
     bool ok = status[i] && bstatus[i] && static_cast<double>(err[i]) <= max_err;

@@ -17,6 +17,11 @@ frontend::PoseOptimizationResult MotionOnlyBa::optimize(frontend::Frame& frame, 
   for (std::size_t i = 0; i < frame.tracks.size(); ++i) {
     const auto& t = frame.tracks[i];
     if (!t.is3d) continue;
+    if ((rig_.T_cb(t.cam) * (frame.T_wb.inverse() * t.X_w)).z() <= 1e-3) {  // behind the camera at the prior: Ceres would abort
+      outliers_.push_back(static_cast<int>(i));
+      frame.tracks[i].is3d = false;
+      continue;
+    }
     const core::VariableId pid{next++};
     p.addVariable(pid, graph::Variable::Point(t.X_w));
     p.setFixed(pid);

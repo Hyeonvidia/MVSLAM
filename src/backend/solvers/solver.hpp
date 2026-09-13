@@ -1,6 +1,7 @@
 #pragma once
 // Solver adapter interface. Every adapter (Ceres / g2o / GTSAM) consumes the same Problem and
 // writes the optimized values back into it. docs/design/03-backend.md §1.3.
+#include <functional>
 #include <memory>
 #include <stop_token>
 #include <string>
@@ -22,6 +23,7 @@ struct SolveOptions {
   Algorithm algorithm = Algorithm::LevenbergMarquardt;
   double initial_lambda = 1e-4;
   bool verbose = false;
+  std::function<bool()> stop_predicate;  // optional: e.g. "a newer keyframe is waiting" (checked per iteration)
 };
 
 struct SolveReport {

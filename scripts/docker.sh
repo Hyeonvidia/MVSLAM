@@ -3,7 +3,9 @@
 #   scripts/docker.sh image                  build the dev image
 #   scripts/docker.sh build [preset]         configure + build + ctest inside the container (default docker-release)
 #   scripts/docker.sh test  [preset]         ctest only
-#   scripts/docker.sh run <config> <EuRoC/MH01> [preset]   dataset runner
+#   scripts/docker.sh run <config> <EuRoC/MH01> [preset] [out] [runner args]   EuRoC runner
+#   scripts/docker.sh kitti <config> <NN> [preset] [out] [runner args]         KITTI odometry runner
+#   scripts/docker.sh eval <EuRoC/MH01> <traj> [--sim3] | eval-kitti <NN> <traj>   ATE against ground truth
 #   scripts/docker.sh shell                  interactive shell
 #   scripts/docker.sh clean                  remove build/ccache volumes
 set -euo pipefail
@@ -15,7 +17,10 @@ case "$cmd" in
   test)  docker compose run --rm dev ctest --preset "${1:-docker-release}" ;;
   tsan)  docker compose run --rm dev-tsan docker/scripts/container_build.sh docker-tsan ;;
   run)   docker compose run --rm dev docker/scripts/run_dataset.sh "$@" ;;
-  shell) docker compose run --rm dev bash ;;
+  kitti) docker compose run --rm dev docker/scripts/run_kitti.sh "$@" ;;
+  eval)  docker compose run --rm dev docker/scripts/evaluate.sh "$@" ;;
+  eval-kitti) docker compose run --rm dev docker/scripts/evaluate_kitti.sh "$@" ;;
+  shell) docker compose run --rm dev bash "$@" ;;
   clean) docker compose down -v ;;
-  *) sed -n '2,9p' "$0" ;;
+  *) sed -n '2,11p' "$0" ;;
 esac

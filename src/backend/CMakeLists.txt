@@ -1,5 +1,6 @@
 set(_srcs graph/problem.cpp graph/factors/reprojection_factor.cpp graph/factors/prior_factor.cpp
-          solvers/solver.cpp marginalization/marginalizer.cpp pose_optimizer.cpp local_ba/window_selector.cpp)
+          solvers/solver.cpp marginalization/marginalizer.cpp pose_optimizer.cpp local_ba/window_selector.cpp
+          local_ba/local_bundle_adjuster.cpp mapper/mapper.cpp mapper/keyframe_culler.cpp mapper/local_map_matcher.cpp)
 if(MVSLAM_WITH_CERES)
   list(APPEND _srcs solvers/ceres/ceres_solver.cpp)
 endif()

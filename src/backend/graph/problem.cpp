@@ -8,6 +8,16 @@ double Problem::totalChi2() const {
   return s;
 }
 
+double Problem::totalRobustCost() const {
+  double s = 0;
+  for (const auto& f : factors_) {
+    const double c2 = f->chi2(values_);
+    if (!std::isfinite(c2)) { s += f->loss.type == RobustLoss::Type::None ? 1e6 : f->loss.delta * f->loss.delta; continue; }
+    s += f->loss.cost(c2);
+  }
+  return s;
+}
+
 Problem::Dense Problem::linearizeDense(const Values& lin, const std::vector<core::VariableId>& order,
                                        const std::function<bool(const IFactor&)>& include) const {
   Dense d;

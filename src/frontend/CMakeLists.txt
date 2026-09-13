@@ -1,6 +1,6 @@
-set(_srcs tracking_state_machine.cpp keyframe_policy.cpp visual_frontend.cpp)
+set(_srcs tracking_state_machine.cpp keyframe_policy.cpp visual_frontend.cpp depth_initializer.cpp)
 if(MVSLAM_HAVE_OPENCV)
-  list(APPEND _srcs opencv/preprocessor.cpp opencv/klt_tracker.cpp opencv/grid_detector.cpp)
+  list(APPEND _srcs opencv/preprocessor.cpp opencv/klt_tracker.cpp opencv/grid_detector.cpp opencv/essential_filter.cpp opencv/pnp_solver.cpp opencv/stereo_matcher.cpp opencv/orb_descriptor.cpp opencv/mono_initializer.cpp opencv/two_view_reconstruction.cpp)
 endif()
 add_library(mvslam_frontend OBJECT ${_srcs})
 add_library(mvslam::frontend ALIAS mvslam_frontend)

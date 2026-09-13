@@ -1,0 +1,45 @@
+# MVSLAM configuration — KITTI odometry, stereo (rectified, no distortion). The runner overrides the
+# rig (intrinsics, image size, baseline) from the sequence's calib.txt; the values below are seq 00-02.
+schema: 1
+sensor: stereo
+inertial: none
+execution: offline
+rng_seed: 0
+rig:
+  cameras:
+    - model: pinhole
+      width: 1241
+      height: 376
+      intrinsics: [718.856, 718.856, 607.1928, 185.2157]
+      distortion: []
+      fps: 10
+    - model: pinhole
+      width: 1241
+      height: 376
+      intrinsics: [718.856, 718.856, 607.1928, 185.2157]
+      distortion: []
+      fps: 10
+      T_bc: [1, 0, 0, 0.5371657, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+frontend:
+  clahe: true
+  clahe_clip: 3.0
+  klt_window: 11
+  klt_levels: 3
+  klt_fb_max_px: 0.5
+  kf_min_parallax_px: 20.0
+  kf_stereo_force_s: 1.0
+  close_depth_factor: 40.0
+  detector_cell_px: 35
+  max_depth_m: 120.0
+backend:
+  solver: ceres
+  lba_max_keyframes: 20
+  lba_max_time_s: 0.2
+  solver_threads: 1
+loop:
+  enable: true
+  recognizer: none
+map:
+  multi_map: true
+logging:
+  level: info

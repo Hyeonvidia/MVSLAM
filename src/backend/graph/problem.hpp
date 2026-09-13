@@ -26,6 +26,7 @@ class Problem {
   const std::vector<std::unique_ptr<IFactor>>& factors() const { return factors_; }
   std::vector<std::unique_ptr<IFactor>>& factors() { return factors_; }
   double totalChi2() const;
+  double totalRobustCost() const;  // sum of rho(chi2); non-evaluable factors count as their delta^2 (finite)
 
   struct Dense {
     std::vector<core::VariableId> order;

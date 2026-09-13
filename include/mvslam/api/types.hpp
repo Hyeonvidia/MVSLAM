@@ -42,12 +42,15 @@ struct TrackStats {
   double frontend_ms = 0;
 };
 
+struct DebugTrack { float u, v; bool is3d; std::uint64_t id; };  // for overlays / viewers
+
 struct TrackResult {
   Timestamp timestamp = 0;
   TrackingState state = TrackingState::NotInitialized;
   std::optional<PoseState> pose;            // absent while not initialized / lost
   std::optional<std::uint64_t> keyframe_id;  // set when this frame became a keyframe
   TrackStats stats;
+  std::vector<DebugTrack> debug_tracks;     // raw pixel positions of the current tracks (cheap; always filled)
 };
 
 // Error policy class 3 (async operations): a value or a message, never an exception across threads.

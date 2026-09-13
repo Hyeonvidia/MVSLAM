@@ -50,8 +50,17 @@ struct FrontendConfig {
   int kf_close_tracked_min = 100, kf_close_new_min = 70; double close_depth_factor = 60.0;
   int detector_cell_px = 35; bool detector_subpix = true;
   double stereo_epipolar_px = 2.0, rgbd_virtual_baseline_m = 0.08, min_depth_m = 0.1, max_depth_m = 40.0;
+  double rgbd_depth_scale = 1.0 / 5000.0;  // Depth16 units -> meters (TUM: 5000/m)
   double recently_lost_inertial_s = 5.0, recently_lost_visual_s = 3.0; int new_map_min_keyframes = 10;
   int reloc_min_bow_matches = 15, reloc_min_inliers = 50;
+  int init_min_features = 100;          // stereo/rgbd: features required in the first keyframe; mono: matches
+  int min_3d_for_ok = 15;               // 3-D tracks needed to leave Initializing / declare tracking ok
+  int reinit_after_frames = 10;         // Initializing frames without 3-D tracks before restarting bootstrap
+  int p3p_min_tracks = 8;
+  double mono_init_min_parallax_px = 20.0;
+  double mono_init_median_depth = 1.0;  // scale normalization of the mono bootstrap map
+  double stereo_reproj_px = 3.0;        // stereo triangulation: max reprojection error in the right view
+  double triangulationReprojPx() const { return stereo_reproj_px; }
 };
 
 struct BackendConfig {
@@ -60,10 +69,14 @@ struct BackendConfig {
   int inertial_window = 10, inertial_window_large = 25, inertial_max_fixed_visual = 200;
   bool anchored_inverse_depth = true, l2_refine_after_robust = true;
   double huber_mono_chi2 = 5.991, huber_stereo_chi2 = 7.815;
-  double kf_cull_redundancy = 0.9, kf_cull_redundancy_stereo_inertial = 0.5;
+  double kf_cull_redundancy = 0.9, kf_cull_redundancy_stereo_inertial = 0.5; int kf_cull_min_other_observers = 3;
   double imu_init_min_span_mono_s = 2.0, imu_init_min_span_stereo_s = 1.0; int imu_init_min_keyframes = 10;
   double imu_refine1_s = 5.0, imu_refine2_s = 15.0;
   int solver_threads = 1;
+  double triangulation_min_parallax_deg = 1.0, triangulation_max_reproj_px = 3.0;
+  int mp_cull_min_observations = 2, mp_cull_grace_keyframes = 3;
+  bool kf_culling = false;  // ORB-SLAM redundancy rule; off for the KLT pipeline (MH01: 95% of keyframes culled, ATE 0.03 -> 0.26 m)
+  double local_match_radius_px = 5.0; int local_match_max_hamming = 50, local_match_max_keyframes = 20;  // local-map re-observation
 };
 
 struct LoopConfig {

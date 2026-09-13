@@ -15,7 +15,9 @@ struct System::Impl {
   api::MapServiceImpl map_service;
   std::vector<ImuSample> imu_buffer;
   Timestamp last_imu = 0, last_frame = 0;
-  std::vector<PoseStamped> trajectory;
+  // Frame poses are kept relative to their reference keyframe so backend corrections propagate.
+  struct FrameRecord { Timestamp t; core::KeyframeId kf; core::SE3 T_kb; core::SE3 T_wb_at_track; };
+  std::vector<FrameRecord> frames;
 };
 
 System::System(Config cfg) {
@@ -45,19 +47,39 @@ TrackResult System::track(const FrameInput& input) {
     return r;
   }
   std::optional<frontend::KeyframeRequest> kf;
-  p.frontend->setOptimizerBusy(p.optimizer && p.optimizer->busy());
+  p.frontend->setOptimizerBusy(p.optimizer && (p.optimizer->busy() || p.optimizer->pending()));
   TrackResult r = p.frontend->process(input, kf);
   if (kf) p.mapper->submit(pipelines::MapperJob{std::move(*kf), {}});
-  if (r.pose) impl_->trajectory.push_back(PoseStamped{r.timestamp, r.pose->T_wb});
+  if (r.pose) {
+    const auto& f = p.frontend->lastFrame();
+    impl_->frames.push_back({r.timestamp, f.reference_kf, f.T_kb, f.T_wb});
+  }
   r.stats.frontend_ms = core::Profiler::instance().get("frontend.process").mean_ms;
   return r;
 }
 
 MapService& System::mapService() { return impl_->map_service; }
-std::vector<PoseStamped> System::trajectory() const { return impl_->trajectory; }
+
+std::vector<PoseStamped> System::trajectory() const {
+  std::vector<PoseStamped> out;
+  out.reserve(impl_->frames.size());
+  auto map = impl_->pipeline->maps->active();
+  map->withReadLock([&](const map::Map& m) {
+    for (const auto& f : impl_->frames) {
+      const auto T_wk = m.resolvePose(f.kf);  // live keyframe, or culled chain to a live one
+      const core::SE3 T = T_wk ? *T_wk * f.T_kb : f.T_wb_at_track;  // reference never inserted (dropped job / other map)
+      out.push_back(PoseStamped{f.t, core::fromSE3(T)});
+    }
+    return 0;
+  });
+  return out;
+}
+
 SystemStats System::stats() const {
   SystemStats s;
   s.frontend_ms_avg = core::Profiler::instance().get("frontend.process").mean_ms;
+  s.mapper_ms_avg = core::Profiler::instance().get("mapper.process").mean_ms;
+  s.optimizer_ms_avg = core::Profiler::instance().get("lba.run").mean_ms;
   s.map = impl_->map_service.summary();
   return s;
 }

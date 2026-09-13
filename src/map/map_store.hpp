@@ -23,6 +23,12 @@ class MapStore {
     active_ = std::make_shared<Map>(map_ids_.next());
     return active_;
   }
+  // Drops the active map (bootstrap failure) and starts a fresh one; nothing is stored.
+  std::shared_ptr<Map> resetActive() {
+    std::lock_guard<std::mutex> lk(mu_);
+    active_ = std::make_shared<Map>(map_ids_.next());
+    return active_;
+  }
   core::IdGenerator<core::KeyframeId>& keyframeIds() { return kf_ids_; }
   core::IdGenerator<core::MapPointId>& mapPointIds() { return mp_ids_; }
   core::IdGenerator<core::TrackId>& trackIds() { return track_ids_; }

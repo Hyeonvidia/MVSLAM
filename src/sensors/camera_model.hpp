@@ -21,8 +21,13 @@ class ICameraModel {
   virtual Eigen::Matrix<double, 2, 3> projectJacobian(const core::Vec3& p_c) const = 0;
   // Pixel (raw, distorted) -> unit-depth ray in camera frame (undistorted).
   virtual core::Vec3 unprojectRaw(const core::Vec2& px_raw) const = 0;
-  // Raw pixel -> undistorted pixel (what the frontend stores).
+  // Raw pixel -> undistorted pixel (what the frontend stores), and the inverse mapping.
   virtual core::Vec2 undistort(const core::Vec2& px_raw) const = 0;
+  virtual core::Vec2 undistortToRaw(const core::Vec2& px_undist) const = 0;
+  // Undistorted pixel -> unit-depth ray (ideal pinhole inverse).
+  core::Vec3 unprojectUndistorted(const core::Vec2& px) const { return {(px.x() - cx()) / fx(), (px.y() - cy()) / fy(), 1.0}; }
+  virtual double cx() const = 0;
+  virtual double cy() const = 0;
   virtual double fx() const = 0;
   virtual double fy() const = 0;
   virtual bool inImage(const core::Vec2& px, double margin = 0) const {
@@ -41,8 +46,11 @@ class PinholeCamera final : public ICameraModel {
   Eigen::Matrix<double, 2, 3> projectJacobian(const core::Vec3& p_c) const override;
   core::Vec3 unprojectRaw(const core::Vec2& px_raw) const override;
   core::Vec2 undistort(const core::Vec2& px_raw) const override;
+  core::Vec2 undistortToRaw(const core::Vec2& px_undist) const override;
   double fx() const override { return fx_; }
   double fy() const override { return fy_; }
+  double cx() const override { return cx_; }
+  double cy() const override { return cy_; }
 
  private:
   core::Vec2 distortNormalized(const core::Vec2& n) const;

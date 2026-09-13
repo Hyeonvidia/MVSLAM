@@ -16,6 +16,15 @@ struct RobustLoss {
   static RobustLoss None() { return {}; }
   static RobustLoss Huber(double d) { return {Type::Huber, d}; }
   static RobustLoss Cauchy(double d) { return {Type::Cauchy, d}; }
+  // Robustified cost rho(chi2) (chi2 = squared whitened residual norm).
+  double cost(double chi2) const {
+    switch (type) {
+      case Type::None: return chi2;
+      case Type::Huber: return chi2 <= delta * delta ? chi2 : 2.0 * delta * std::sqrt(chi2) - delta * delta;
+      case Type::Cauchy: return delta * delta * std::log1p(chi2 / (delta * delta));
+    }
+    return chi2;
+  }
   // IRLS weight w(chi2) such that scaling r and J by sqrt(w) reproduces the robust normal equations.
   double weight(double chi2) const {
     switch (type) {

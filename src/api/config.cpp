@@ -83,8 +83,9 @@ Config parse(const YAML::Node& root) {
   MV_F(kf_min_parallax_px); MV_F(kf_track_ratio); MV_F(kf_occupancy_ratio); MV_F(kf_stereo_force_s);
   MV_F(kf_imu_interval_s); MV_F(kf_imu_preinit_interval_s); MV_F(kf_close_tracked_min); MV_F(kf_close_new_min);
   MV_F(close_depth_factor); MV_F(detector_cell_px); MV_F(detector_subpix); MV_F(stereo_epipolar_px);
-  MV_F(rgbd_virtual_baseline_m); MV_F(min_depth_m); MV_F(max_depth_m); MV_F(recently_lost_inertial_s);
+  MV_F(rgbd_virtual_baseline_m); MV_F(min_depth_m); MV_F(max_depth_m); MV_F(rgbd_depth_scale); MV_F(recently_lost_inertial_s);
   MV_F(recently_lost_visual_s); MV_F(new_map_min_keyframes); MV_F(reloc_min_bow_matches); MV_F(reloc_min_inliers);
+  MV_F(init_min_features); MV_F(min_3d_for_ok); MV_F(reinit_after_frames); MV_F(p3p_min_tracks); MV_F(mono_init_min_parallax_px); MV_F(mono_init_median_depth); MV_F(stereo_reproj_px);
 #undef MV_F
   const auto b = root["backend"];
   auto& B = c.backend;
@@ -94,8 +95,10 @@ Config parse(const YAML::Node& root) {
   MV_B(lba_max_keyframes); MV_B(lba_min_covisibility); MV_B(lba_iters); MV_B(lba_max_time_s);
   MV_B(inertial_window); MV_B(inertial_window_large); MV_B(inertial_max_fixed_visual);
   MV_B(anchored_inverse_depth); MV_B(l2_refine_after_robust); MV_B(huber_mono_chi2); MV_B(huber_stereo_chi2);
-  MV_B(kf_cull_redundancy); MV_B(kf_cull_redundancy_stereo_inertial); MV_B(imu_init_min_span_mono_s);
+  MV_B(kf_cull_redundancy); MV_B(kf_cull_redundancy_stereo_inertial); MV_B(kf_cull_min_other_observers); MV_B(imu_init_min_span_mono_s);
   MV_B(imu_init_min_span_stereo_s); MV_B(imu_init_min_keyframes); MV_B(imu_refine1_s); MV_B(imu_refine2_s); MV_B(solver_threads);
+  MV_B(triangulation_min_parallax_deg); MV_B(triangulation_max_reproj_px); MV_B(mp_cull_min_observations); MV_B(mp_cull_grace_keyframes); MV_B(kf_culling);
+  MV_B(local_match_radius_px); MV_B(local_match_max_hamming); MV_B(local_match_max_keyframes);
 #undef MV_B
   const auto l = root["loop"];
   auto& L = c.loop;

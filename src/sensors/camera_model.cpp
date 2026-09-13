@@ -58,6 +58,12 @@ core::Vec2 PinholeCamera::undistort(const core::Vec2& px_raw) const {
   return {fx_ * r.x() + cx_, fy_ * r.y() + cy_};
 }
 
+core::Vec2 PinholeCamera::undistortToRaw(const core::Vec2& px_undist) const {
+  const core::Vec2 n((px_undist.x() - cx_) / fx_, (px_undist.y() - cy_) / fy_);
+  const core::Vec2 d = has_distortion_ ? distortNormalized(n) : n;
+  return {fx_ * d.x() + cx_, fy_ * d.y() + cy_};
+}
+
 std::unique_ptr<ICameraModel> makeCameraModel(const CameraConfig& cfg) {
   switch (cfg.model) {
     case CameraModelType::Pinhole: return std::make_unique<PinholeCamera>(cfg);

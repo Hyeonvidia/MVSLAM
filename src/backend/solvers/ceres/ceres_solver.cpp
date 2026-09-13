@@ -110,13 +110,16 @@ class FactorCost final : public ceres::CostFunction {
 
 class StopCallback final : public ceres::IterationCallback {
  public:
-  explicit StopCallback(std::stop_token st) : st_(std::move(st)) {}
+  StopCallback(std::stop_token st, std::function<bool()> pred) : st_(std::move(st)), pred_(std::move(pred)) {}
   ceres::CallbackReturnType operator()(const ceres::IterationSummary&) override {
-    return st_.stop_requested() ? ceres::SOLVER_TERMINATE_SUCCESSFULLY : ceres::SOLVER_CONTINUE;
+    if (st_.stop_requested() || (pred_ && pred_())) { triggered_ = true; return ceres::SOLVER_TERMINATE_SUCCESSFULLY; }
+    return ceres::SOLVER_CONTINUE;
   }
-  bool triggered() const { return st_.stop_requested(); }
+  bool triggered() const { return triggered_; }
  private:
   std::stop_token st_;
+  std::function<bool()> pred_;
+  bool triggered_ = false;
 };
 
 ceres::LinearSolverType toCeres(LinearSolverType t) {
@@ -144,20 +147,27 @@ SolveReport CeresSolver::solve(Problem& problem, const SolveOptions& o, std::sto
   Se3Manifold se3_manifold;
   GravityDirManifold gdir_manifold;
 
-  std::unordered_map<core::VariableId, std::vector<double>> blocks;
-  auto block = [&](core::VariableId id) -> double* {
-    auto it = blocks.find(id);
-    if (it != blocks.end()) return it->second.data();
+  // All parameter blocks live in ONE contiguous buffer, laid out in first-use order. Ceres orders the
+  // blocks of an elimination group by address (ParameterBlockOrdering is a std::set<double*>), so
+  // separately heap-allocated blocks would make the Schur elimination order — and the last bits of
+  // the result — depend on the allocator (observed: two trajectories differing by 1e-9 run to run).
+  std::vector<core::VariableId> order;
+  std::unordered_map<core::VariableId, std::size_t> offset;
+  std::size_t total = 0;
+  for (const auto& f : problem.factors())
+    for (auto k : f->keys())
+      if (!offset.count(k)) { offset[k] = total; order.push_back(k); total += static_cast<std::size_t>(ambientSize(problem.variable(k))); }
+  std::vector<double> storage(total);
+  auto block = [&](core::VariableId id) { return storage.data() + offset.at(id); };
+  for (auto id : order) {
     const Variable& v = problem.variable(id);
-    auto& b = blocks[id];
-    b.resize(static_cast<std::size_t>(ambientSize(v)));
-    toAmbient(v, b.data());
-    if (v.kind == VariableKind::Pose) cp.AddParameterBlock(b.data(), 7, &se3_manifold);
-    else if (v.kind == VariableKind::GravityDir) cp.AddParameterBlock(b.data(), 4, &gdir_manifold);
-    else cp.AddParameterBlock(b.data(), v.dim());
-    if (problem.isFixed(id)) cp.SetParameterBlockConstant(b.data());
-    return b.data();
-  };
+    double* x = block(id);
+    toAmbient(v, x);
+    if (v.kind == VariableKind::Pose) cp.AddParameterBlock(x, 7, &se3_manifold);
+    else if (v.kind == VariableKind::GravityDir) cp.AddParameterBlock(x, 4, &gdir_manifold);
+    else cp.AddParameterBlock(x, v.dim());
+    if (problem.isFixed(id)) cp.SetParameterBlockConstant(x);
+  }
 
   auto ordering = std::make_shared<ceres::ParameterBlockOrdering>();
   for (const auto& f : problem.factors()) {
@@ -169,9 +179,9 @@ SolveReport CeresSolver::solve(Problem& problem, const SolveOptions& o, std::sto
     else if (f->loss.type == RobustLoss::Type::Cauchy) loss = new ceres::CauchyLoss(f->loss.delta);
     cp.AddResidualBlock(new FactorCost(*f, std::move(tmpl)), loss, params);
   }
-  for (auto& [id, b] : blocks) {
+  for (auto id : order) {
     const auto kind = problem.variable(id).kind;
-    ordering->AddElementToGroup(b.data(), (kind == VariableKind::Point || kind == VariableKind::InvDepth) ? 0 : 1);
+    ordering->AddElementToGroup(block(id), (kind == VariableKind::Point || kind == VariableKind::InvDepth) ? 0 : 1);
   }
 
   ceres::Solver::Options so;
@@ -187,13 +197,13 @@ SolveReport CeresSolver::solve(Problem& problem, const SolveOptions& o, std::sto
     if (ordering->GroupSize(0) > 0) so.linear_solver_ordering = ordering;
     else so.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
   }
-  StopCallback cb(std::move(stop));
+  StopCallback cb(std::move(stop), o.stop_predicate);
   so.callbacks.push_back(&cb);
 
   ceres::Solver::Summary summary;
   ceres::Solve(so, &cp, &summary);
 
-  for (auto& [id, b] : blocks) fromAmbient(b.data(), problem.variable(id));
+  for (auto id : order) fromAmbient(block(id), problem.variable(id));
   rep.converged = summary.termination_type == ceres::CONVERGENCE || summary.termination_type == ceres::USER_SUCCESS;
   rep.preempted = cb.triggered();
   rep.iterations = static_cast<int>(summary.iterations.size()) - 1;

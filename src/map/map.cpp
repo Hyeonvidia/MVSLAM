@@ -28,14 +28,32 @@ void Map::addObservation(core::MapPointId mpid, core::KeyframeId kfid, Observati
     slots[static_cast<std::size_t>(slot.keypoint_index)] = mpid;
 }
 
+void Map::removeObservation(core::MapPointId mpid, core::KeyframeId kfid) {
+  auto mp = mapPoint(mpid);
+  auto kf = keyframe(kfid);
+  if (!mp || !kf) return;
+  auto it = mp->observations().find(kfid);
+  if (it != mp->observations().end()) {
+    auto& slots = kf->mapPointSlots();
+    const int idx = it->second.keypoint_index;
+    if (idx >= 0 && static_cast<std::size_t>(idx) < slots.size()) slots[static_cast<std::size_t>(idx)] = core::MapPointId{};
+  }
+  mp->removeObservation(kfid);
+}
+
 void Map::removeKeyFrame(core::KeyframeId kfid) {
   auto it = keyframes_.find(kfid);
   if (it == keyframes_.end()) return;
   auto kf = it->second;
+  std::vector<core::MapPointId> starved;  // ORB-SLAM: a point left with < 2 observations is discarded with the keyframe
   for (auto mpid : kf->mapPointSlots()) {
     if (!mpid.valid()) continue;
-    if (auto mp = mapPoint(mpid)) mp->removeObservation(kfid);  // includes anchor migration
+    if (auto mp = mapPoint(mpid)) {
+      mp->removeObservation(kfid);  // includes anchor migration
+      if (mp->numObservations() < 2) starved.push_back(mpid);
+    }
   }
+  for (auto mpid : starved) removeMapPoint(mpid);
   // Re-parent children to this keyframe's parent (simple spanning-tree repair).
   for (auto child : kf->children()) {
     if (auto c = keyframe(child)) c->setParent(kf->parent());

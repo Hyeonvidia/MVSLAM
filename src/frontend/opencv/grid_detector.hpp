@@ -10,6 +10,7 @@ class GridShiTomasiDetector final : public IFeatureDetector {
  public:
   explicit GridShiTomasiDetector(const FrontendConfig& c) : c_(c) {}
   std::vector<core::Vec2> detect(const ImageState& image, const std::vector<core::Vec2>& existing, int max_new) override;
+  int cellCount(int width, int height) const override { return (width / c_.detector_cell_px) * (height / c_.detector_cell_px); }
  private:
   FrontendConfig c_;
   double quality_ = 0.001;

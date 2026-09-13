@@ -18,7 +18,10 @@ struct Keypoint {
   int cam = 0;                // rig camera index
   core::TrackId track;        // KLT track id (== candidate MapPointId)
   double depth = -1;          // metric depth from stereo/rgbd at keyframe time, <0 if unknown
-  double info = 1.0;          // observation weight (Sigma = info * I)
+  double info = 1.0;          // observation weight (Sigma^-1 = info * I)
+  bool has_right = false;     // stereo: matched undistorted pixel in camera 1
+  core::Vec2 uv_right = core::Vec2::Zero();
+  bool outlier = false;       // marked by BA; excluded from further optimization
 };
 
 struct ImuPreintegrationData;  // defined in backend/imu; stored by pointer to keep map free of backend types
