@@ -41,3 +41,7 @@
 | 단안 초기화 E는 5-pt USAC_ACCURATE | 단위 테스트 실측: 8-pt/5-pt RANSAC 최소표본 해의 회전 오차 ~0.4°(0.2 px 잡음) → 삼각측량 오차 수십 cm |
 | KF culling 기본 OFF | MH01 stereo 실측(670→28 KF, ATE 0.032→0.257 m), OV²SLAM도 KF culling 없음(`분석/02` §3) — [ADR-0009](../adr/0009-keyframe-culling-off-for-klt.md) |
 | LBA robust 비용 발산 가드 + depth 사전 필터 | MH01 실측: χ² `inf`로 가드 무력화 → 프레임 1380 추적 상실; Ceres 초기 평가 실패 시 LBA 전체 무효(`Initial residual and Jacobian evaluation failed`) |
+| 장소 인식 = HBST 온라인 트리(어휘 파일 없음) | clean-room(ORB 어휘 파일은 GPL 저장소 산출물), Schlegel & Grisetti HBST 2018; V101 실측 99.3% — [ADR-0010](../adr/0010-hbst-online-place-recognition.md) |
+| 직렬화는 Sophus 원시 저장 경유 | 쿼터니언 재정규화가 LSB를 바꿔 바이트 동일성 실패(라운드트립 테스트 실측) |
+| 뷰어 = Rerun(공개 API 어댑터), Pangolin 비채택 | 도커 전용 워크플로우에서 X11/GLX 불필요, `.rrd` 기록·재생, iOS/Jetson 헤드리스 — [ADR-0011](../adr/0011-rerun-viewer.md) |
+| 재측위 inlier 임계 20 | V101 실측: 30에서 52.7%(실패 68건 중 64건이 24-27 inlier), 20에서 99.3%·오탐 0 |

@@ -54,6 +54,7 @@ class System {
   void pushImu(const ImuSample&);              // 시간 단조 증가 필수, 호출자가 직렬화(cuVSLAM 계약)
   TrackResult track(const FrameInput&);        // 논블로킹(Realtime) / 동기(Offline). 실패 = state, 예외 아님
   MapService& mapService();                    // 저장/로드/재측위/이벤트
+  Result<Pose> localize(const FrameInput& input);   // 무상태 단일 프레임 재측위(모든 맵), 추적 상태 불변 (P1)
   std::vector<PoseStamped> trajectory() const; // KF 보정 반영된 전체 프레임 궤적(T_wk·T_kb)
   Stats stats() const;                         // 타이밍·큐 길이·맵 크기
   std::string effectiveConfigYaml() const;
@@ -70,7 +71,8 @@ class MapService {
  public:
   void save(std::string path, std::function<void(Result<void>)> cb);   // 비동기(Realtime)/동기(Offline)
   void load(std::string path, std::function<void(Result<MapSummary>)> cb);
-  void localize(std::optional<Pose> prior, std::function<void(Result<Pose>)> cb);  // 저장 맵에서 재측위 시도
+  void localize(std::optional<Pose> prior, std::function<void(Result<Pose>)> cb);  // 다음 track() 프레임들에서 전 맵 재측위를 시도(무장); 성공 시 그 맵으로 전환·추적 계속, 콜백 1회 (frontend.reloc_max_attempts 프레임 후 실패 보고). prior는 예약
+  MapSnapshot snapshot() const;   // 뷰어/도구용 복사본: KF pose·타임스탬프, MP xyz (read lock 아래 O(크기))
   Subscription subscribe(EventHandler h);      // MapEvent variant(KeyframeInserted, PosesCorrected, …), 해제는 RAII
   MapSummary summary() const;                  // 맵 수, KF/MP 수, 활성 맵 id
 };

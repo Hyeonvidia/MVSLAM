@@ -32,6 +32,7 @@ classDiagram
 ```
 
 - `CovisibilityGraph::update(kf)`: 공유 MP 수 집계(**같은 맵 KF만**, ORB `GetMap()` 필터), 가중치 ≥ 15 간선, 첫 연결 시 최대 공시 KF를 spanning tree 부모로. `essentialSubgraph`: spanning tree + loop edge + 가중 ≥ 100(+관성 prev/next 간선).
+- `IPlaceRecognizer`(후보 제안기): 기본 구현 `HbstPlaceRecognizer`(`map/hbst_place_recognizer.hpp`, [ADR-0010](../adr/0010-hbst-online-place-recognition.md)) — 어휘 파일 없이 KF의 ORB descriptor를 Hamming 이진 탐색 트리(잎 ≤ 512, 최균형 비트 분할)에 온라인 삽입, 질의 descriptor마다 잎을 brute-force해 최근접(≤ 50 bit)의 KF에 1표, 표 ≥ 8인 KF를 득표순 후보로. `MapStore`가 하나를 소유해 모든 맵의 KF를 담는다(단일 KFDB 원칙). Mapper가 KF 삽입 때 `add`, culling 때 `erase`, 로드 때 재구축.
 - `KeyFrame::keypoints`: `vector<Keypoint{uv, uv_undist, level(0 for KLT), track_id}>`, `descriptors: cv::Mat`은 **map 모듈 밖 타입이라 `std::vector<uint8_t>`(N×32) + stride**로 저장(공개 헤더·직렬화 독립).
 - `MapPoint::observations`의 값은 `{slot_index, cam_index}` — fisheye/다중 카메라의 좌/우 관측을 같은 KF 안에서 구분(ORB tuple<left,right> 일반화).
 - `Map::removeKeyFrame`(culling): 관측 제거(anchor는 남은 최초 관측 KF로 이전 — `MapPoint::removeObservation`) → 관측이 < 2로 떨어진 MP 제거(ORB `EraseObservation`) → spanning tree 자식 재부모화 → prev/next 재연결 → covisibility 간선 제거 → tombstone.
@@ -64,13 +65,13 @@ classDiagram
 ## 6. 직렬화 (`map/serialization/`, cereal binary)
 | 항목 | 저장 | 비고 |
 |---|---|---|
-| 헤더 | magic, format version, `mvslam` 버전, rig 해시, 어휘 해시(DBoW 사용 시), id 카운터 4종 | 불일치 시 로드 거부(마이그레이션은 버전별 reader) |
-| Map | id, origin KF ids, imuState, KF 목록, MP 목록(tombstone 제외) | |
-| KeyFrame | id, timestamp, `T_wb`, v, bias, rig 인덱스, keypoints(uv_undist, level, track_id), descriptors, depth 관측, MP slot ids, covisibility(id, weight), spanning tree/loop edge ids, prev/next KF, preintegration(Δ, Jacobian, 공분산, **원시 측정 포함**) | 이미지·피라미드 미저장 |
-| MapPoint | id, X_w, normal, descriptor, observations(kf id → slot, cam), anchor kf, 거리 범위, counters | |
-| 미저장 | KFDB 역색인(로드 시 재구축), 프레임 궤적, 임시 스탬프 | |
-- 로드: 전 맵을 `stored`로 등록 + KFDB 재구축 → 새 active 맵 시작 → 재측위 성공 시 그 맵을 active로 전환하고 IMU 상태 승계(ORB의 "병합으로 승계"보다 직접적).
-- 포맷은 플랫폼 독립(리틀엔디언 고정, 정수 폭 고정). Python 도구(`scripts/mapdump.py`)로 검사 가능하도록 필드 순서를 문서화한다.
+| 헤더 | magic `MVSM`, format version(`kMapFormatVersion`=1), `mvslam` 버전 문자열, id 카운터 3종(KF·MP·track의 next 값) | magic/format 불일치 시 로드 거부. 맵 id 카운터는 로드 시 max(loaded)+1로 재계산 |
+| Map | id, origin KF ids, imuState(initialized/refined1/refined2/scale/R_wg), lastKeyframe, KF 목록(id 순), MP 목록(id 순), KF별 covisibility 이웃(id, weight), 트랙 alias(정렬), culled 기록(id, 참조 KF, T_rc, T_wc) | KF가 없는 맵은 쓰지 않음(빈 active 맵) |
+| KeyFrame | id, timestamp, `T_wb`, v, bias, keypoints(uv_raw, uv, level, cam, track, depth, info, has_right, uv_right, outlier), descriptors(N×32), MP slot ids, parent, prev/next, children, loop edges | 이미지·피라미드 미저장; preintegration은 P2에서 추가(format 2) |
+| MapPoint | id, X_w, anchor kf, observations(kf id → keypoint index, cam), descriptor, visible/found counters | |
+| 미저장 | tombstone, pending 2-D 관측, 장소 인식 색인(로드 시 KF descriptor로 재구축), 프레임 궤적 | |
+- 인코딩: cereal `PortableBinary`(리틀엔디언 고정, 정수 폭 고정). pose는 Sophus 내부 저장([qx qy qz qw tx ty tz])을 그대로 읽고 쓴다 — 쿼터니언을 다시 정규화하면 마지막 비트가 바뀌어 **save→load→save 바이트 동일성**이 깨진다(단위 테스트 + V101 실맵 21 MB로 검증).
+- 로드(`loadMapStore`): 맵 전부를 `stored`로 등록 → 장소 인식기에 KF descriptor 재등록 → id 카운터 resume(max(현재, 저장값)) → 현재 active 맵이 비어 있으면 새 id로 재생성(충돌 방지). 재측위(`MapService::localize` 또는 `System::localize`)가 성공하면 `MapStore::activate(map)`이 그 맵을 active로 올리고 추적이 이어진다(IMU 상태 승계는 P2).
 
 ## 7. 메모리 상한
 - 맵당 KF 상한(`map.max_keyframes`, 기본 무제한 → culling 강도로 제어), stored 맵 수 상한(초과 시 가장 오래된 맵을 디스크로 spill), descriptor lazy-load 옵션(cuVSLAM `map_cache_path`), epoch 회수. 상시 구동 시 메모리가 단조 증가하지 않음을 통합 테스트(장시간 루프 시퀀스)로 검증한다.

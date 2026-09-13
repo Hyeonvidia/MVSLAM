@@ -16,7 +16,7 @@
 | `IDepthSource` *(Mapper 워커에서 실행)* | KF 시점 깊이 측정 | `KltStereoMatcher` / `DepthImageSource` | — |
 | `IKeyframePolicy` | KF 판정 | `ParallaxTrackRatioPolicy` | + `ClosePointRule`, `InertialTimeRule` 데코레이터 |
 | `IInitializer` | 맵 부트스트랩 | `MonoTwoViewInitializer`(mono, `two_view_reconstruction.hpp`) / `DepthInitializer`(stereo·rgbd) | `FivePointInitializer` |
-| `IRelocalizer` | LOST 시 재측위 | `BowPnpRelocalizer` | — |
+| `Relocalizer` | LOST 시 / 로드된 맵 재측위 | 후보(`IPlaceRecognizer`) → ORB 매칭 → P3P → BA → 투영 확장 | DBoW 후보 제안기(P3) |
 | `TrackingStateMachine` | OK / RECENTLY_LOST / LOST 전이, 센서별 연명 | 단일 구현(State 패턴) | — |
 
 프레임 데이터는 `frontend::Frame`(내부)에 담고, KF 승격 시 `map::KeyFrame`으로 **복사**(트랙 좌표·id·피라미드 참조·우/깊이 영상 참조·preintegration). 프론트엔드는 `map::Map`을 **읽기만** 하고(로컬맵 MP 위치·descriptor), 쓰기는 `KeyframeRequest` 큐로만 한다.
@@ -65,7 +65,7 @@ pose ← IPoseOptimizer.optimize(pose, 3D 관측)   // MotionOnlyBa: Huber √5.
 | `Lost` | 현재 맵 KF > 10 → `MapStore.startNewMap()`(기존 맵 보존, 병합은 Loop 워커) / ≤ 10 → 맵 리셋 | Atlas 5요소 |
 | 시간 점프 | 타임스탬프 역행 또는 > 1 s 점프 → 새 맵(관성: VI-BA2 미완이면 리셋) | |
 
-재측위(`BowPnpRelocalizer`): **LOST 상태에서만 프레임에 ORB descriptor를 계산**(`분석/06` §6.3) → 모든 맵의 `KeyframeDatabase` 질의(ORB는 active 맵 한정 — 개선) → BoW 매칭 ≥ 15 → PnP-RANSAC(≥ 6점) → `MotionOnlyBa` → 투영 보강 2단 → inlier ≥ 50.
+재측위(`frontend/relocalizer.hpp`, P1 구현): **LOST 상태(또는 `MapService::localize` 무장 시)에만** 질의 영상에 격자 코너(`reloc_detector_cell_px` 20 px, 추적용 35 px보다 조밀)를 검출하고 ORB descriptor를 계산(`분석/06` §6.3) → `IPlaceRecognizer::query`(기본 HBST, [ADR-0010](../adr/0010-hbst-online-place-recognition.md); 모든 맵 대상 — ORB는 active 맵 한정, 개선) 상위 5 후보 → 후보 KF + covisible 10 KF의 MP descriptor를 질의 코너와 Hamming ≤ `reloc_max_hamming`(60; KF 코너는 KLT로 추적되어 신규 검출과 ~1 px 어긋남) + ratio 0.8로 매칭 ≥ 15 → P3P-RANSAC → `MotionOnlyBa` → 로컬맵 전체를 pose로 투영해 반경 8 px 안의 미매칭 코너와 재매칭(투영 확장) → 재최적화 inlier ≥ `reloc_min_inliers`(20). 성공 시 프레임 pose·inlier 트랙(id = MP id)·참조 KF를 프론트엔드가 채택하고, 다른 맵이면 `MapStore::activate`로 전환한다. V101 실측(맵 저장 후 20프레임마다 무상태 질의 146회): 146회 재측위, 145회가 5 cm/3° 안(99.3%), 중앙 오차 4.6 mm·0.09°; 로드 맵에 재측위 후 연속 추적 ATE 0.050 m.
 
 ### 2.6 KF 판정 (`IKeyframePolicy` + 데코레이터)
 | 규칙 | 값 | 출처 |

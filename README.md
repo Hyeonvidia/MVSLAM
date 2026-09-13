@@ -45,7 +45,25 @@ scripts/docker.sh shell          # 컨테이너 셸
 | EuRoC MH01 | mono | 0.142 m (Sim3, scale 3.70) | 2.7 ms/frame | 두 시점 H/E 초기화, 루프 클로징 없음 |
 | KITTI 00 | stereo | 4.99 m (SE3, 3.7 km) | 4.9 ms/frame | 루프 클로징 없음(P3) |
 
-러너 옵션: `--euroc <mav0>` 또는 `--kitti <sequences/NN> [--kitti-calib calib.txt]`(P0/P1로 rig 자동 설정), `--out`, `--execution offline|realtime`, `--max-frames N`, `--status-every N`, `--overlay-dir DIR [--overlay-every N]`(트랙 오버레이 PNG: 초록 3D/노랑 2D), `--log-level debug`.
+## P1 결과 (EuRoC V1_01 stereo, Offline, 2026-09-14)
+| 항목 | 결과 |
+|---|---|
+| 맵 저장 → 로드 → 저장 | 바이트 동일 (21 MB, 535 KF / 15.6k MP) |
+| 무상태 재측위 `System::localize` (20프레임마다 146회) | 146회 성공, 5 cm/3° 안 99.3%, 위치 중앙 오차 4.6 mm |
+| 로드 맵 재측위 후 연속 추적 (프레임 1000부터) | ATE 0.050 m |
+| TUM fr1_desk RGB-D | 데이터셋 미보유 — `--tum` 로더·`eval-tum` 준비됨 |
+
+러너 옵션: 입력 `--euroc <mav0>` / `--kitti <sequences/NN> [--kitti-calib calib.txt]`(P0/P1로 rig 자동 설정) / `--tum <rgbd dir>`; `--out`, `--execution offline|realtime`, `--max-frames N`, `--start-frame N`, `--status-every N`, `--overlay-dir DIR [--overlay-every N]`(트랙 오버레이 PNG), `--log-level debug`; 맵 `--save-map map.mvs`, `--load-map map.mvs`, `--localize-arm 1`(로드 맵에 재측위 후 추적 계속), `--localize-every N --localize-out loc.txt [--no-track 1]`(무상태 재측위 평가 → `scripts/docker.sh eval-loc`); 뷰어 `--rerun out.rrd | rerun+http://host.docker.internal:9876/proxy [--rerun-image-every N]`.
+
+## 뷰어 (Rerun)
+코어는 뷰어를 모른다. `src/platform/viz/rerun_sink`가 공개 API(이벤트·스냅샷)만으로 카메라·이미지·트랙·KF 프러스텀·맵 포인트·궤적을 Rerun에 기록한다([ADR-0011](docs/adr/0011-rerun-viewer.md)).
+```bash
+pip install rerun-sdk==0.37.2                     # 호스트 뷰어 (SDK와 같은 버전)
+scripts/docker.sh run configs/euroc_stereo_imu.yaml EuRoC/MH01 docker-release /results/MH01.txt --execution offline --rerun /results/MH01.rrd
+rerun results/MH01.rrd                            # 기록 재생
+rerun &  # 실시간: 호스트 뷰어를 띄운 뒤
+scripts/docker.sh run configs/euroc_stereo_imu.yaml EuRoC/MH01 docker-release /results/MH01.txt --rerun rerun+http://host.docker.internal:9876/proxy
+```
 
 ## 사용 예
 ```cpp
@@ -54,6 +72,9 @@ mvslam::System slam(cfg);
 slam.pushImu(sample);                          // 시간 단조 증가
 auto r = slam.track(frame);                    // 논블로킹(Realtime) / 동기(Offline)
 slam.mapService().save("map.mvs", [](auto res){ /* Result<void> */ });
+slam.mapService().load("map.mvs", [](auto res){ /* Result<MapSummary> */ });
+slam.mapService().localize(std::nullopt, [](auto res){ /* 다음 프레임들에서 로드 맵에 재측위, 성공 시 그 맵에서 추적 계속 */ });
+auto where = slam.localize(frame);               // 무상태 단일 프레임 재측위 (Result<Pose>)
 ```
 
 ## 저장소 구조
