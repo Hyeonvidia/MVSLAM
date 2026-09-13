@@ -1,0 +1,19 @@
+Checks: >
+  -*,
+  bugprone-*,
+  concurrency-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-special-member-functions,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -bugprone-easily-swappable-parameters
+HeaderFilterRegex: '(include|src)/mvslam/.*'
+CheckOptions:
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: _

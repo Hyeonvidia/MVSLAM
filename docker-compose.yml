@@ -1,0 +1,38 @@
+# Usage (from the repo root):
+#   docker compose build
+#   docker compose run --rm dev docker/scripts/container_build.sh            # docker-release: configure+build+ctest
+#   docker compose run --rm dev docker/scripts/container_build.sh docker-tsan
+#   docker compose run --rm dev docker/scripts/run_dataset.sh configs/euroc_stereo_imu.yaml EuRoC/MH01
+#   docker compose run --rm dev bash                                          # interactive shell
+# Build trees live in the named volume mvslam-build (/workspace/build) — nothing is built on the host.
+services:
+  dev:
+    build:
+      context: docker
+    image: mvslam-dev:latest
+    platform: linux/arm64
+    shm_size: 2gb
+    working_dir: /workspace
+    environment:
+      - CCACHE_DIR=/ccache
+    volumes:
+      - .:/workspace
+      - ../Datasets:/datasets:ro
+      - ./results:/results
+      - mvslam-build:/workspace/build
+      - mvslam-ccache:/ccache
+    command: sleep infinity
+
+  # ThreadSanitizer runs only: TSAN disables ASLR through personality(2), which Docker's default
+  # seccomp profile blocks. Diagnostic use; never for gate/ATE-judged runs.
+  dev-tsan:
+    extends: dev
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      - CCACHE_DIR=/ccache
+      - TSAN_OPTIONS=halt_on_error=1 second_deadlock_stack=1
+
+volumes:
+  mvslam-build:
+  mvslam-ccache:

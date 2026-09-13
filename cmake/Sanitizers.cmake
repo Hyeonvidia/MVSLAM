@@ -1,0 +1,17 @@
+# MVSLAM_SANITIZER=asan|tsan|ubsan adds instrumentation to *all* targets configured after this point
+# (including third-party built in-tree — needed for a consistent runtime).
+if(NOT MVSLAM_SANITIZER STREQUAL "none")
+  if(MVSLAM_SANITIZER STREQUAL "asan")
+    set(_san "-fsanitize=address -fno-omit-frame-pointer")
+  elseif(MVSLAM_SANITIZER STREQUAL "tsan")
+    set(_san "-fsanitize=thread")
+  elseif(MVSLAM_SANITIZER STREQUAL "ubsan")
+    set(_san "-fsanitize=undefined -fno-omit-frame-pointer")
+  else()
+    message(FATAL_ERROR "Unknown MVSLAM_SANITIZER=${MVSLAM_SANITIZER}")
+  endif()
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_san}")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_san}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${_san}")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${_san}")
+endif()

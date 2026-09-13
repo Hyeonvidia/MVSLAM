@@ -1,0 +1,16 @@
+BasedOnStyle: Google
+ColumnLimit: 100
+IndentWidth: 2
+DerivePointerAlignment: false
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^"mvslam/'
+    Priority: 1
+  - Regex: '^<(Eigen|sophus|ceres|g2o|gtsam|opencv2|yaml-cpp|spdlog|cereal)/'
+    Priority: 3
+  - Regex: '^<.*>'
+    Priority: 4
+  - Regex: '.*'
+    Priority: 2

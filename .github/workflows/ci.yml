@@ -1,0 +1,37 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, preset: linux-release, cc: gcc-13, cxx: g++-13 }
+          - { os: ubuntu-24.04, preset: linux-release, cc: clang-17, cxx: clang++-17 }
+          - { os: ubuntu-24.04-arm, preset: linux-release, cc: gcc-13, cxx: g++-13 }
+          - { os: macos-15, preset: macos-release, cc: clang, cxx: clang++ }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive, fetch-depth: 1 }
+      - name: deps (linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libopencv-dev ccache
+      - name: deps (macos)
+        if: runner.os == 'macOS'
+        run: brew install ninja opencv ccache
+      - name: configure
+        env: { CC: "${{ matrix.cc }}", CXX: "${{ matrix.cxx }}" }
+        run: cmake --preset ${{ matrix.preset }} -DMVSLAM_WERROR=ON -DMVSLAM_CERES_SCHUR_SPECIALIZATIONS=OFF -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: build
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
+      - name: test
+        run: ctest --preset ${{ matrix.preset }}
+  tsan-nightly:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive, fetch-depth: 1 }
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libopencv-dev
+      - run: cmake --preset linux-tsan && cmake --build --preset linux-tsan --parallel && ctest --preset linux-tsan

@@ -1,0 +1,285 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MVSLAM_WITH_CERES": "ON"
+      }
+    },
+    {
+      "name": "macos-release",
+      "inherits": "base",
+      "displayName": "macOS Release (Ceres)",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "macos-debug",
+      "inherits": "macos-release",
+      "displayName": "macOS Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MVSLAM_CERES_SCHUR_SPECIALIZATIONS": "OFF"
+      }
+    },
+    {
+      "name": "macos-full",
+      "inherits": "macos-release",
+      "displayName": "macOS Release (Ceres+g2o+GTSAM)",
+      "cacheVariables": {
+        "MVSLAM_WITH_G2O": "ON",
+        "MVSLAM_WITH_GTSAM": "ON"
+      }
+    },
+    {
+      "name": "linux-release",
+      "inherits": "base",
+      "displayName": "Linux Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-asan",
+      "inherits": "linux-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "MVSLAM_SANITIZER": "asan",
+        "MVSLAM_CERES_SCHUR_SPECIALIZATIONS": "OFF"
+      }
+    },
+    {
+      "name": "linux-tsan",
+      "inherits": "linux-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "MVSLAM_SANITIZER": "tsan",
+        "MVSLAM_CERES_SCHUR_SPECIALIZATIONS": "OFF"
+      }
+    },
+    {
+      "name": "linux-full",
+      "inherits": "linux-release",
+      "cacheVariables": {
+        "MVSLAM_WITH_G2O": "ON",
+        "MVSLAM_WITH_GTSAM": "ON"
+      }
+    },
+    {
+      "name": "jetson-release",
+      "inherits": "linux-release",
+      "displayName": "Jetson Orin (JetPack 6, aarch64)",
+      "cacheVariables": {
+        "MVSLAM_OPENCV_SOURCE": "system",
+        "MVSLAM_SHARED": "ON"
+      }
+    },
+    {
+      "name": "ios-base",
+      "hidden": true,
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/ios.cmake",
+      "cacheVariables": {
+        "MVSLAM_OPENCV_SOURCE": "submodule",
+        "MVSLAM_BUILD_TESTS": "OFF",
+        "MVSLAM_BUILD_APPS": "OFF",
+        "BUILD_SHARED_LIBS": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "ios-device",
+      "inherits": "ios-base",
+      "cacheVariables": {
+        "CMAKE_OSX_SYSROOT": "iphoneos"
+      }
+    },
+    {
+      "name": "ios-simulator",
+      "inherits": "ios-base",
+      "cacheVariables": {
+        "CMAKE_OSX_SYSROOT": "iphonesimulator"
+      }
+    },
+    {
+      "name": "docker-release",
+      "inherits": "linux-release",
+      "displayName": "Docker (Ubuntu 24.04) Release",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "MVSLAM_OPENCV_SOURCE": "system"
+      }
+    },
+    {
+      "name": "docker-full",
+      "inherits": "linux-full",
+      "displayName": "Docker Release (Ceres+g2o+GTSAM)",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "MVSLAM_OPENCV_SOURCE": "system"
+      }
+    },
+    {
+      "name": "docker-asan",
+      "inherits": "linux-asan",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "MVSLAM_OPENCV_SOURCE": "system"
+      }
+    },
+    {
+      "name": "docker-tsan",
+      "inherits": "linux-tsan",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "MVSLAM_OPENCV_SOURCE": "system"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "macos-release",
+      "configurePreset": "macos-release"
+    },
+    {
+      "name": "macos-debug",
+      "configurePreset": "macos-debug"
+    },
+    {
+      "name": "macos-full",
+      "configurePreset": "macos-full"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
+    },
+    {
+      "name": "linux-asan",
+      "configurePreset": "linux-asan"
+    },
+    {
+      "name": "linux-tsan",
+      "configurePreset": "linux-tsan"
+    },
+    {
+      "name": "linux-full",
+      "configurePreset": "linux-full"
+    },
+    {
+      "name": "jetson-release",
+      "configurePreset": "jetson-release"
+    },
+    {
+      "name": "ios-device",
+      "configurePreset": "ios-device"
+    },
+    {
+      "name": "ios-simulator",
+      "configurePreset": "ios-simulator"
+    },
+    {
+      "name": "docker-release",
+      "configurePreset": "docker-release"
+    },
+    {
+      "name": "docker-full",
+      "configurePreset": "docker-full"
+    },
+    {
+      "name": "docker-asan",
+      "configurePreset": "docker-asan"
+    },
+    {
+      "name": "docker-tsan",
+      "configurePreset": "docker-tsan"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "macos-release",
+      "configurePreset": "macos-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "macos-debug",
+      "configurePreset": "macos-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-asan",
+      "configurePreset": "linux-asan",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-tsan",
+      "configurePreset": "linux-tsan",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "docker-release",
+      "configurePreset": "docker-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "docker-full",
+      "configurePreset": "docker-full",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "docker-asan",
+      "configurePreset": "docker-asan",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "docker-tsan",
+      "configurePreset": "docker-tsan",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
