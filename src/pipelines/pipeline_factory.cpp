@@ -1,6 +1,7 @@
 #include "pipelines/pipeline_factory.hpp"
 
 #include "backend/pose_optimizer.hpp"
+#include "map/hbst_place_recognizer.hpp"
 #include "core/log.hpp"
 #include "frontend/depth_image_source.hpp"
 #include "frontend/depth_initializer.hpp"
@@ -37,7 +38,11 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
   p->config = cfg;
   p->rig = std::make_unique<sensors::CameraRig>(cfg.rig);
   p->maps = std::make_unique<map::MapStore>();
-  p->maps->setPlaceRecognizer(std::make_unique<map::NullPlaceRecognizer>());  // DBoW/incremental adapters: P3
+  switch (cfg.loop.recognizer) {  // relocalization (P1) and loop candidates (P3) share the recognizer
+    case PlaceRecognizerType::Incremental: p->maps->setPlaceRecognizer(std::make_unique<map::HbstPlaceRecognizer>()); break;
+    case PlaceRecognizerType::DBoW: throw ConfigError("loop.recognizer=dbow: adapter not built yet (use incremental)");
+    case PlaceRecognizerType::None: p->maps->setPlaceRecognizer(std::make_unique<map::NullPlaceRecognizer>()); break;
+  }
   p->solver = backend::graph::makeSolver(cfg.backend.solver);
 
   const bool inertial = cfg.inertial == InertialMode::Imu;
@@ -57,6 +62,15 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
   fc.predictor = std::make_unique<frontend::ConstantVelocityPredictor>();  // ImuPredictor: P2
   fc.pose_optimizer = std::make_unique<backend::MotionOnlyBa>(*p->rig, p->solver, fcfg, cfg.backend);
   fc.keyframe_policy = makeKeyframePolicy(cfg);
+#ifdef MVSLAM_HAVE_OPENCV
+  fc.descriptor = std::make_unique<frontend::cv_impl::OrbDescriptorExtractor>();
+  if (cfg.loop.recognizer != PlaceRecognizerType::None && fc.detector && fc.robust_pose) {
+    FrontendConfig rcfg = fcfg;
+    rcfg.detector_cell_px = fcfg.reloc_detector_cell_px;
+    fc.reloc_detector = std::make_unique<frontend::cv_impl::GridShiTomasiDetector>(rcfg);
+    fc.relocalizer = std::make_unique<frontend::Relocalizer>(fcfg, *p->rig, *p->maps, *fc.reloc_detector, *fc.descriptor, *fc.robust_pose, *fc.pose_optimizer);
+  }
+#endif
   if (!fc.detector || !fc.tracker) {
     fc.initializer = std::make_unique<frontend::NullInitializer>();
   } else if (cfg.sensor == SensorMode::Mono) {
@@ -87,6 +101,7 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
         const auto rep = raw->lba->run(*map, job.keyframe, st, newer);
         if (rep.applied && raw->config.backend.kf_culling) {
           const auto removed = map->withWriteLock([&](map::Map& m) { return raw->culler->cull(m, job.keyframe); });
+          for (auto k : removed) if (auto* pr = raw->maps->placeRecognizer()) pr->erase(k);
           if (!removed.empty() && raw->maps->events().hasSubscribers())
             for (auto k : removed) raw->maps->events().publish(KeyframeRemovedEvent{map->id().value, k.value});
         }

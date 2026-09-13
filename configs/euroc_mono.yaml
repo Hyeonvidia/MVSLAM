@@ -12,5 +12,5 @@ rig:
       fps: 20
 frontend: {clahe: true, detector_cell_px: 35, kf_min_parallax_px: 20.0}
 backend: {solver: ceres, lba_max_keyframes: 20, solver_threads: 1}
-loop: {enable: true, recognizer: none}
+loop: {enable: true, recognizer: incremental   # none | incremental (HBST, no vocabulary) | dbow (P3)
 map: {multi_map: true}

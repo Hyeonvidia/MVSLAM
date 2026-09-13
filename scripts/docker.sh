@@ -5,7 +5,9 @@
 #   scripts/docker.sh test  [preset]         ctest only
 #   scripts/docker.sh run <config> <EuRoC/MH01> [preset] [out] [runner args]   EuRoC runner
 #   scripts/docker.sh kitti <config> <NN> [preset] [out] [runner args]         KITTI odometry runner
-#   scripts/docker.sh eval <EuRoC/MH01> <traj> [--sim3] | eval-kitti <NN> <traj>   ATE against ground truth
+#   scripts/docker.sh tum <config> <TUM_RGBD/seq> [preset] [out] [runner args]    TUM RGB-D runner
+#   scripts/docker.sh eval <EuRoC/MH01> <traj> [--sim3] | eval-kitti <NN> <traj> | eval-tum <TUM_RGBD/seq> <traj>
+#   scripts/docker.sh eval-loc <ref_traj> <loc.txt> [EuRoC/V101]                   relocalization success rate
 #   scripts/docker.sh shell                  interactive shell
 #   scripts/docker.sh clean                  remove build/ccache volumes
 set -euo pipefail
@@ -20,7 +22,10 @@ case "$cmd" in
   kitti) docker compose run --rm dev docker/scripts/run_kitti.sh "$@" ;;
   eval)  docker compose run --rm dev docker/scripts/evaluate.sh "$@" ;;
   eval-kitti) docker compose run --rm dev docker/scripts/evaluate_kitti.sh "$@" ;;
+  tum)   docker compose run --rm dev docker/scripts/run_tum.sh "$@" ;;
+  eval-tum) docker compose run --rm dev docker/scripts/evaluate_tum.sh "$@" ;;
+  eval-loc) docker compose run --rm dev docker/scripts/evaluate_localization.sh "$@" ;;
   shell) docker compose run --rm dev bash "$@" ;;
   clean) docker compose down -v ;;
-  *) sed -n '2,11p' "$0" ;;
+  *) sed -n '2,14p' "$0" ;;
 esac

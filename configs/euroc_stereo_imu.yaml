@@ -53,7 +53,7 @@ backend:
   solver_threads: 1
 loop:
   enable: true
-  recognizer: none         # none | dbow | incremental (P3)
+  recognizer: incremental   # none | incremental (HBST, no vocabulary) | dbow (P3)
   loose_ba_threshold: 0.02
 map:
   multi_map: true

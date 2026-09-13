@@ -84,7 +84,7 @@ Config parse(const YAML::Node& root) {
   MV_F(kf_imu_interval_s); MV_F(kf_imu_preinit_interval_s); MV_F(kf_close_tracked_min); MV_F(kf_close_new_min);
   MV_F(close_depth_factor); MV_F(detector_cell_px); MV_F(detector_subpix); MV_F(stereo_epipolar_px);
   MV_F(rgbd_virtual_baseline_m); MV_F(min_depth_m); MV_F(max_depth_m); MV_F(rgbd_depth_scale); MV_F(recently_lost_inertial_s);
-  MV_F(recently_lost_visual_s); MV_F(new_map_min_keyframes); MV_F(reloc_min_bow_matches); MV_F(reloc_min_inliers);
+  MV_F(recently_lost_visual_s); MV_F(new_map_min_keyframes); MV_F(reloc_min_bow_matches); MV_F(reloc_min_inliers); MV_F(reloc_max_attempts); MV_F(reloc_detector_cell_px); MV_F(reloc_max_hamming);
   MV_F(init_min_features); MV_F(min_3d_for_ok); MV_F(reinit_after_frames); MV_F(p3p_min_tracks); MV_F(mono_init_min_parallax_px); MV_F(mono_init_median_depth); MV_F(stereo_reproj_px);
 #undef MV_F
   const auto b = root["backend"];

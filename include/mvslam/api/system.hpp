@@ -30,6 +30,8 @@ class System {
   void pushImu(const ImuSample& sample);            // timestamps must be non-decreasing
   TrackResult track(const FrameInput& input);        // non-blocking in Realtime, synchronous in Offline
   MapService& mapService();
+  // Stateless single-frame localization against every map (loaded + current); tracking is untouched.
+  Result<Pose> localize(const FrameInput& input);
   std::vector<PoseStamped> trajectory() const;       // all frames, expressed through their reference keyframes
   SystemStats stats() const;
   const Config& config() const;

@@ -3,6 +3,7 @@
 
 usage: evaluate_ate.py --gt <mav0/state_groundtruth_estimate0/data.csv> --traj <tum.txt> [--sim3] [--max-dt 0.01]
        evaluate_ate.py --gt <poses/NN.txt> --times <sequences/NN/times.txt> --traj <tum.txt>   (KITTI)
+       evaluate_ate.py --gt <groundtruth.txt> --gt-format tum --traj <tum.txt>                 (TUM RGB-D)
 Trajectory format: TUM (t[s] tx ty tz qx qy qz qw). Alignment: Umeyama SE(3) (or Sim(3) with --sim3).
 """
 import argparse, json, sys
@@ -26,6 +27,18 @@ def load_kitti_gt(poses_path, times_path):
     t = np.loadtxt(times_path).reshape(-1)
     n = min(len(P), len(t))
     return t[:n], P[:n, :, 3]
+
+
+def load_tum_gt(path):
+    rows = []
+    with open(path) as f:
+        for line in f:
+            if not line.strip() or line[0] == '#':
+                continue
+            v = line.split()
+            rows.append([float(x) for x in v[:4]])
+    a = np.array(rows)
+    return a[:, 0], a[:, 1:4]
 
 
 def load_tum(path):
@@ -65,8 +78,14 @@ def main():
     ap.add_argument('--sim3', action='store_true')
     ap.add_argument('--max-dt', type=float, default=0.01)
     ap.add_argument('--times', help='KITTI times.txt (selects the KITTI pose format for --gt)')
+    ap.add_argument('--gt-format', choices=['euroc', 'tum'], default='euroc')
     a = ap.parse_args()
-    t_gt, p_gt = load_kitti_gt(a.gt, a.times) if a.times else load_euroc_gt(a.gt)
+    if a.times:
+        t_gt, p_gt = load_kitti_gt(a.gt, a.times)
+    elif a.gt_format == 'tum':
+        t_gt, p_gt = load_tum_gt(a.gt)
+    else:
+        t_gt, p_gt = load_euroc_gt(a.gt)
     t_est, p_est = load_tum(a.traj)
     if len(t_est) == 0:
         print(json.dumps({'error': 'empty trajectory'}))

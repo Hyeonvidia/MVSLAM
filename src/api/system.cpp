@@ -10,7 +10,13 @@
 namespace mvslam {
 
 struct System::Impl {
-  explicit Impl(Config cfg) : pipeline(pipelines::PipelineFactory::build(cfg)), map_service(*pipeline->maps) {}
+  explicit Impl(Config cfg)
+      : pipeline(pipelines::PipelineFactory::build(cfg)),
+        map_service(*pipeline->maps, [this](std::function<void(Result<Pose>)> cb) {
+          if (!pipeline->frontend) { cb(Result<Pose>::failure("localize: no frontend")); return; }
+          localize_cb = std::move(cb);
+          pipeline->frontend->armGlobalRelocalization(pipeline->config.frontend.reloc_max_attempts);
+        }) {}
   std::unique_ptr<pipelines::Pipeline> pipeline;
   api::MapServiceImpl map_service;
   std::vector<ImuSample> imu_buffer;
@@ -18,6 +24,7 @@ struct System::Impl {
   // Frame poses are kept relative to their reference keyframe so backend corrections propagate.
   struct FrameRecord { Timestamp t; core::KeyframeId kf; core::SE3 T_kb; core::SE3 T_wb_at_track; };
   std::vector<FrameRecord> frames;
+  std::function<void(Result<Pose>)> localize_cb;
 };
 
 System::System(Config cfg) {
@@ -55,7 +62,20 @@ TrackResult System::track(const FrameInput& input) {
     impl_->frames.push_back({r.timestamp, f.reference_kf, f.T_kb, f.T_wb});
   }
   r.stats.frontend_ms = core::Profiler::instance().get("frontend.process").mean_ms;
+  if (auto outcome = p.frontend->takeRelocalizationOutcome(); outcome && impl_->localize_cb) {
+    auto cb = std::move(impl_->localize_cb);
+    impl_->localize_cb = nullptr;
+    cb(*outcome);
+  }
   return r;
+}
+
+Result<Pose> System::localize(const FrameInput& input) {
+  auto& p = *impl_->pipeline;
+  if (!p.frontend_available) return Result<Pose>::failure("localize: frontend unavailable");
+  const auto rr = p.frontend->localizeOnce(input);
+  if (!rr) return Result<Pose>::failure("localize: no map matched");
+  return Result<Pose>::success(core::fromSE3(rr->T_wb));
 }
 
 MapService& System::mapService() { return impl_->map_service; }

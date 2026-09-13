@@ -48,7 +48,9 @@ class KeyFrame {
   core::KeyframeId parent() const { return parent_; }
   void setParent(core::KeyframeId p) { parent_ = p; }
   std::set<core::KeyframeId>& children() { return children_; }
+  const std::set<core::KeyframeId>& children() const { return children_; }
   std::set<core::KeyframeId>& loopEdges() { return loop_edges_; }
+  const std::set<core::KeyframeId>& loopEdges() const { return loop_edges_; }
   core::KeyframeId prevKf() const { return prev_; }
   core::KeyframeId nextKf() const { return next_; }
   void setPrevKf(core::KeyframeId k) { prev_ = k; }

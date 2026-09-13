@@ -1,4 +1,4 @@
-set(_srcs tracking_state_machine.cpp keyframe_policy.cpp visual_frontend.cpp depth_initializer.cpp)
+set(_srcs tracking_state_machine.cpp keyframe_policy.cpp visual_frontend.cpp depth_initializer.cpp relocalizer.cpp)
 if(MVSLAM_HAVE_OPENCV)
   list(APPEND _srcs opencv/preprocessor.cpp opencv/klt_tracker.cpp opencv/grid_detector.cpp opencv/essential_filter.cpp opencv/pnp_solver.cpp opencv/stereo_matcher.cpp opencv/orb_descriptor.cpp opencv/mono_initializer.cpp opencv/two_view_reconstruction.cpp)
 endif()

@@ -29,6 +29,38 @@ class MapStore {
     active_ = std::make_shared<Map>(map_ids_.next());
     return active_;
   }
+  // Persistence / relocalization support ------------------------------------------------------
+  void addStored(std::shared_ptr<Map> m) { std::lock_guard<std::mutex> lk(mu_); stored_.push_back(std::move(m)); }
+  std::shared_ptr<Map> find(core::MapId id) const {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (active_ && active_->id() == id) return active_;
+    for (const auto& m : stored_) if (m->id() == id) return m;
+    return nullptr;
+  }
+  std::vector<std::shared_ptr<Map>> all() const {  // stored maps then the active one
+    std::lock_guard<std::mutex> lk(mu_);
+    auto v = stored_;
+    if (active_) v.push_back(active_);
+    return v;
+  }
+  // Makes a stored map the active one (relocalized into it); the previous active map is stored
+  // unless it is empty, in which case it is dropped.
+  bool activate(core::MapId id) {
+    std::lock_guard<std::mutex> lk(mu_);
+    for (auto it = stored_.begin(); it != stored_.end(); ++it) {
+      if ((*it)->id() != id) continue;
+      auto target = *it;
+      stored_.erase(it);
+      if (active_ && active_->withReadLock([](const Map& m) { return m.numKeyframes(); }) > 0) stored_.push_back(active_);
+      active_ = std::move(target);
+      return true;
+    }
+    return active_ && active_->id() == id;
+  }
+  core::IdGenerator<core::MapId>& mapIds() { return map_ids_; }
+  const core::IdGenerator<core::KeyframeId>& keyframeIds() const { return kf_ids_; }
+  const core::IdGenerator<core::MapPointId>& mapPointIds() const { return mp_ids_; }
+  const core::IdGenerator<core::TrackId>& trackIds() const { return track_ids_; }
   core::IdGenerator<core::KeyframeId>& keyframeIds() { return kf_ids_; }
   core::IdGenerator<core::MapPointId>& mapPointIds() { return mp_ids_; }
   core::IdGenerator<core::TrackId>& trackIds() { return track_ids_; }

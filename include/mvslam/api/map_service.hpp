@@ -13,6 +13,11 @@ namespace mvslam {
 
 struct MapSummary { int maps = 0; std::uint64_t active_map = 0; int keyframes = 0, map_points = 0; };
 
+// Copy-out view of the active map for viewers and tools (taken under the map read lock; O(size)).
+struct KeyframePose { std::uint64_t id = 0; Timestamp timestamp = 0; Pose T_wb; };
+struct MapPointXyz { std::uint64_t id = 0; float x = 0, y = 0, z = 0; };
+struct MapSnapshot { std::uint64_t map_id = 0, epoch = 0; std::vector<KeyframePose> keyframes; std::vector<MapPointXyz> points; };
+
 struct KeyframeInsertedEvent { std::uint64_t map_id, keyframe_id; Timestamp timestamp; Pose T_wb; };
 struct KeyframeRemovedEvent { std::uint64_t map_id, keyframe_id; };
 struct MapPointsUpdatedEvent { std::uint64_t map_id; std::uint64_t epoch; };
@@ -47,10 +52,14 @@ class MapService {
   // Realtime: queued on the loop worker, callback runs on that worker. Offline: synchronous.
   virtual void save(std::string path, std::function<void(Result<void>)> cb) = 0;
   virtual void load(std::string path, std::function<void(Result<MapSummary>)> cb) = 0;
+  // Arms global relocalization for the next frames given to System::track(): the frontend searches every
+  // map (loaded and current), switches to the matching map and continues tracking there; `cb` fires once
+  // with the relocalized pose or a failure after frontend.reloc_max_attempts frames. `prior` is reserved.
   virtual void localize(std::optional<Pose> prior, std::function<void(Result<Pose>)> cb) = 0;
   // Handlers are invoked on worker threads, outside map locks; they must return quickly.
   virtual Subscription subscribe(EventHandler handler) = 0;
   virtual MapSummary summary() const = 0;
+  virtual MapSnapshot snapshot() const = 0;
 };
 
 }  // namespace mvslam

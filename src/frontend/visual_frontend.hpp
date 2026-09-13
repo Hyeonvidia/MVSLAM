@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "frontend/interfaces.hpp"
+#include "frontend/relocalizer.hpp"
 #include "frontend/tracking_state_machine.hpp"
 #include "map/map_store.hpp"
 #include "mvslam/api/config.hpp"
@@ -22,6 +23,9 @@ struct FrontendComponents {
   std::unique_ptr<IPoseOptimizer> pose_optimizer;    // from backend
   std::unique_ptr<IKeyframePolicy> keyframe_policy;
   std::unique_ptr<IInitializer> initializer;
+  std::unique_ptr<IDescriptorExtractor> descriptor;   // LOST-time descriptors (relocalization)
+  std::unique_ptr<IFeatureDetector> reloc_detector;    // denser grid for relocalization queries
+  std::unique_ptr<Relocalizer> relocalizer;            // null: relocalization disabled
 };
 
 class VisualFrontend {
@@ -33,6 +37,12 @@ class VisualFrontend {
   const Frame& lastFrame() const { return last_; }
   TrackingState state() const { return sm_.state(); }
   void setOptimizerBusy(bool b) { optimizer_busy_ = b; }
+  // Stateless single-image localization against every map (stored + active); tracking is untouched.
+  std::optional<RelocalizationResult> localizeOnce(const FrameInput& input);
+  // Global relocalization for the next `max_attempts` frames (MapService::localize): while armed, the
+  // bootstrap and LOST paths search every map instead of the active one and switch maps on success.
+  void armGlobalRelocalization(int max_attempts) { reloc_armed_ = max_attempts; reloc_outcome_.reset(); }
+  std::optional<Result<Pose>> takeRelocalizationOutcome() { auto o = std::move(reloc_outcome_); reloc_outcome_.reset(); return o; }
 
  private:
   enum class Phase { Bootstrap, WaitingFor3d, Tracking };
@@ -41,6 +51,8 @@ class VisualFrontend {
   void createKeyframe(Frame& cur, const std::shared_ptr<ImageState>& image, const FrameInput& input, KeyframeRequest& out);
   void restartBootstrap();
   int countOccupiedCells(const Frame& f) const;
+  bool tryRelocalize(Frame& cur, const std::shared_ptr<ImageState>& image, const FrameInput& input, bool all_maps);
+  void adoptRelocalization(Frame& cur, const RelocalizationResult& rr, Timestamp t);
 
   FrontendConfig cfg_;
   SensorMode sensor_;
@@ -58,6 +70,8 @@ class VisualFrontend {
   std::uint64_t frame_counter_ = 0, last_epoch_ = 0;
   int max_tracks_ = 0;
   bool optimizer_busy_ = false;
+  int reloc_armed_ = 0;
+  std::optional<Result<Pose>> reloc_outcome_;
 };
 
 }  // namespace mvslam::frontend

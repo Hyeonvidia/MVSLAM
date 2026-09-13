@@ -31,6 +31,9 @@ class MapPoint {
   void countVisible() { ++visible_; }
   void countFound() { ++found_; }
   double foundRatio() const { return visible_ == 0 ? 1.0 : static_cast<double>(found_) / static_cast<double>(visible_); }
+  int visibleCount() const { return visible_; }
+  int foundCount() const { return found_; }
+  void setCounters(int visible, int found) { visible_ = visible; found_ = found; }
   bool bad() const { return bad_; }
   void markBad(std::uint64_t epoch) { bad_ = true; bad_epoch_ = epoch; }
   std::uint64_t badEpoch() const { return bad_epoch_; }

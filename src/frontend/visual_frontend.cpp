@@ -101,6 +101,41 @@ void VisualFrontend::createKeyframe(Frame& cur, const std::shared_ptr<ImageState
   frames_since_kf_ = 0;
 }
 
+std::optional<RelocalizationResult> VisualFrontend::localizeOnce(const FrameInput& input) {
+  if (!c_.relocalizer || !c_.preprocessor || input.images.empty()) return std::nullopt;
+  const std::shared_ptr<ImageState> image = c_.preprocessor->process(input.images[0]);
+  return c_.relocalizer->relocalize(*image, input.images[0], maps_.all());
+}
+
+bool VisualFrontend::tryRelocalize(Frame& cur, const std::shared_ptr<ImageState>& image, const FrameInput& input, bool all_maps) {
+  if (!c_.relocalizer) return false;
+  const auto maps = all_maps ? maps_.all() : std::vector<std::shared_ptr<map::Map>>{maps_.active()};
+  auto rr = c_.relocalizer->relocalize(*image, input.images[0], maps);
+  if (!rr) return false;
+  adoptRelocalization(cur, *rr, input.timestamp);
+  return true;
+}
+
+void VisualFrontend::adoptRelocalization(Frame& cur, const RelocalizationResult& rr, Timestamp t) {
+  if (rr.map != maps_.active()->id()) {
+    maps_.activate(rr.map);
+    MVSLAM_INFO("frontend: switched to map {} by relocalization", rr.map.value);
+  }
+  cur.T_wb = rr.T_wb;
+  cur.tracks = rr.tracks;
+  last_kf_id_ = rr.keyframe;
+  last_kf_frame_ = Frame{};
+  last_kf_frame_.timestamp = t;
+  last_kf_frame_.T_wb = rr.T_wk;
+  last_kf_frame_.tracks = cur.tracks;
+  frames_since_kf_ = 0;
+  waiting_frames_ = 0;
+  p3p_required_ = false;
+  if (c_.predictor) c_.predictor->reset();
+  phase_ = Phase::Tracking;
+  sm_.onRelocalized(t);
+}
+
 void VisualFrontend::restartBootstrap() {
   phase_ = Phase::Bootstrap;
   waiting_frames_ = 0;
@@ -122,7 +157,17 @@ TrackResult VisualFrontend::process(const FrameInput& input, std::optional<Keyfr
   cur.id = ++frame_counter_;
   cur.timestamp = input.timestamp;
 
-  if (phase_ == Phase::Bootstrap) {
+  if (phase_ == Phase::Bootstrap && reloc_armed_ > 0) {  // MapService::localize(): relocalize into a loaded map first
+    if (tryRelocalize(cur, image, input, true)) {
+      reloc_armed_ = 0;
+      reloc_outcome_ = Result<Pose>::success(core::fromSE3(cur.T_wb));
+      r.pose = PoseState{core::fromSE3(cur.T_wb), {}, {}, {}};
+      cur.reference_kf = last_kf_id_;
+      cur.T_kb = last_kf_frame_.T_wb.inverse() * cur.T_wb;
+    } else if (--reloc_armed_ == 0) {
+      reloc_outcome_ = Result<Pose>::failure("relocalization failed: no map matched the recent frames");
+    }
+  } else if (phase_ == Phase::Bootstrap) {
     cur.T_wb = has_last_ ? last_.T_wb : core::SE3();  // a restarted map continues from the last known pose
     KeyframeRequest req;
     if (c_.initializer && c_.initializer->tryInitialize(cur, image, input, req)) {
@@ -141,7 +186,7 @@ TrackResult VisualFrontend::process(const FrameInput& input, std::optional<Keyfr
     IFeatureTracker::Stats st;
     if (c_.tracker && last_image_) st = c_.tracker->track(*last_image_, *image, last_, cur, predicted);
     if (c_.outlier_filter && phase_ == Phase::Tracking) c_.outlier_filter->filter(last_kf_frame_, cur);
-    const bool ok = estimatePose(cur, st, r);
+    bool ok = estimatePose(cur, st, r);
 
     if (phase_ == Phase::WaitingFor3d) {
       if (ok && cur.num3d() >= cfg_.min_3d_for_ok) {
@@ -158,7 +203,14 @@ TrackResult VisualFrontend::process(const FrameInput& input, std::optional<Keyfr
       switch (sm_.onFrame(input.timestamp, ok, kfs)) {
         case TrackingStateMachine::Action::StartNewMap: maps_.startNewMap(); restartBootstrap(); break;
         case TrackingStateMachine::Action::ResetMap: maps_.resetActive(); restartBootstrap(); break;
-        default: break;  // TryRelocalize: relocalization lands in P1
+        case TrackingStateMachine::Action::TryRelocalize:
+          if (tryRelocalize(cur, image, input, reloc_armed_ > 0)) {
+            ok = true;
+            r.stats.inliers = static_cast<int>(cur.tracks.size());
+            if (reloc_armed_ > 0) { reloc_armed_ = 0; reloc_outcome_ = Result<Pose>::success(core::fromSE3(cur.T_wb)); }
+          }
+          break;
+        default: break;
       }
     }
     if (ok && c_.predictor) c_.predictor->update(last_, cur);

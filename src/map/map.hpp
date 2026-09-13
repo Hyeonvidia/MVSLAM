@@ -45,6 +45,7 @@ class Map {
   std::shared_ptr<KeyFrame> keyframe(core::KeyframeId id) const;
   std::shared_ptr<MapPoint> mapPoint(core::MapPointId id) const;
   const CovisibilityGraph& covisibility() const { return cov_; }
+  CovisibilityGraph& covisibility() { return cov_; }  // persistence / merge only (inside the write lock)
   std::vector<std::shared_ptr<KeyFrame>> keyframes() const;
   std::vector<std::shared_ptr<MapPoint>> mapPoints() const;
   std::size_t numKeyframes() const { return keyframes_.size(); }
@@ -85,6 +86,9 @@ class Map {
     return id;
   }
   bool hasTrackAlias(core::TrackId t) const { return track_aliases_.count(t) != 0; }
+  const std::unordered_map<core::TrackId, core::MapPointId>& trackAliases() const { return track_aliases_; }
+  const std::unordered_map<core::KeyframeId, CulledRecord>& culledRecords() const { return culled_; }
+  void setOrigins(std::vector<core::KeyframeId> o) { origins_ = std::move(o); }
 
  private:
   core::MapId id_;

@@ -176,6 +176,7 @@ core::KeyframeId Mapper::process(frontend::KeyframeRequest req, std::stop_token 
   });
   stats_.local_matches += lm.matched;
   stats_.migrated_observations += lm.migrated;
+  if (auto* pr = maps_.placeRecognizer(); pr && stride > 0 && !kf->descriptors().empty()) pr->add(kf->id(), map->id(), kf->descriptors(), stride);
   stats_.keyframes++;
   stats_.points_from_depth += from_depth;
   stats_.points_triangulated += triangulated;

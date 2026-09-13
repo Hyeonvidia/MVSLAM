@@ -52,7 +52,10 @@ struct FrontendConfig {
   double stereo_epipolar_px = 2.0, rgbd_virtual_baseline_m = 0.08, min_depth_m = 0.1, max_depth_m = 40.0;
   double rgbd_depth_scale = 1.0 / 5000.0;  // Depth16 units -> meters (TUM: 5000/m)
   double recently_lost_inertial_s = 5.0, recently_lost_visual_s = 3.0; int new_map_min_keyframes = 10;
-  int reloc_min_bow_matches = 15, reloc_min_inliers = 50;
+  int reloc_min_bow_matches = 15, reloc_min_inliers = 20;  // P3P-RANSAC + BA inliers (V101 tuning: 25-30 typical, precision unchanged)
+  int reloc_max_attempts = 30;                              // MapService::localize(): frames tried before reporting failure
+  int reloc_detector_cell_px = 20;                          // denser corners on the query image than for tracking (LOST-time only)
+  int reloc_max_hamming = 60;                               // query corners are fresh detections, keyframe corners were KLT-tracked (~1 px drift)
   int init_min_features = 100;          // stereo/rgbd: features required in the first keyframe; mono: matches
   int min_3d_for_ok = 15;               // 3-D tracks needed to leave Initializing / declare tracking ok
   int reinit_after_frames = 10;         // Initializing frames without 3-D tracks before restarting bootstrap

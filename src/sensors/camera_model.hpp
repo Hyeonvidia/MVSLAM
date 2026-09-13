@@ -60,6 +60,38 @@ class PinholeCamera final : public ICameraModel {
   bool has_distortion_ = false;
 };
 
+// Kannala-Brandt equidistant fisheye with 4 polynomial coefficients (k1..k4; OpenCV fisheye / TUM-VI /
+// ORB-SLAM3 KB8 convention): theta_d = theta (1 + k1 theta^2 + k2 theta^4 + k3 theta^6 + k4 theta^8).
+// project()/projectJacobian() stay the ideal pinhole (keypoints are stored undistorted, docs/design/02
+// §2.1); the fisheye model only maps raw pixels <-> rays, so observations near the image border see
+// stretched pixel units (their information weight may be reduced by the frontend). Rays beyond ~85 deg
+// off-axis have no pinhole image: unprojectRaw clamps them, callers must discard such keypoints
+// (fisheye tracking validation on TUM-VI is scheduled with the platform work, P4).
+class KannalaBrandt8Camera final : public ICameraModel {
+ public:
+  explicit KannalaBrandt8Camera(const CameraConfig& cfg);
+  CameraModelType type() const override { return CameraModelType::KannalaBrandt8; }
+  int width() const override { return width_; }
+  int height() const override { return height_; }
+  core::Vec2 project(const core::Vec3& p_c) const override;
+  Eigen::Matrix<double, 2, 3> projectJacobian(const core::Vec3& p_c) const override;
+  core::Vec3 unprojectRaw(const core::Vec2& px_raw) const override;
+  core::Vec2 undistort(const core::Vec2& px_raw) const override;
+  core::Vec2 undistortToRaw(const core::Vec2& px_undist) const override;
+  double fx() const override { return fx_; }
+  double fy() const override { return fy_; }
+  double cx() const override { return cx_; }
+  double cy() const override { return cy_; }
+  // Raw-pixel projection with the full fisheye model (viewer / debugging).
+  core::Vec2 projectRaw(const core::Vec3& p_c) const;
+
+ private:
+  double thetaFromDistorted(double theta_d) const;  // Newton inversion of the polynomial
+  int width_, height_;
+  double fx_, fy_, cx_, cy_;
+  double k_[4] = {0, 0, 0, 0};
+};
+
 // Factory: CameraConfig -> concrete model (throws ConfigError for unsupported types).
 std::unique_ptr<ICameraModel> makeCameraModel(const CameraConfig& cfg);
 
