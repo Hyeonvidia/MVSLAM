@@ -4,7 +4,9 @@
 
 #include <atomic>
 #include <cmath>
+#include <deque>
 #include <mutex>
+#include <unordered_map>
 #include <variant>
 
 namespace mvslam::viz {
@@ -34,6 +36,16 @@ Pose poseFromMatrix(const std::array<double, 16>& m) {  // row-major 4x4 -> Pose
   else { const double s = std::sqrt(1.0 + r22 - r00 - r11) * 2; q.w = (r10 - r01) / s; q.x = (r02 + r20) / s; q.y = (r12 + r21) / s; q.z = 0.25 * s; }
   return {q, {m[3], m[7], m[11]}};
 }
+// The visualization up-axis: the world frame is the first body frame, which is not gravity aligned in
+// general (EuRoC's IMU frame has +x up, camera-only rigs have -y up). Camera 0 looks down its +z with
+// +y pointing down, so "up" in the body frame is -R_bc * e_y; the dominant axis picks the ViewCoordinates.
+rerun::ViewCoordinates worldViewCoordinates(const Pose& T_bc) {
+  const Vec3 up = rotate(T_bc.q, Vec3{0, -1, 0});
+  const double ax = std::abs(up.x), ay = std::abs(up.y), az = std::abs(up.z);
+  if (ax >= ay && ax >= az) return up.x > 0 ? rerun::ViewCoordinates::RIGHT_HAND_X_UP : rerun::ViewCoordinates::RIGHT_HAND_X_DOWN;
+  if (ay >= az) return up.y > 0 ? rerun::ViewCoordinates::RIGHT_HAND_Y_UP : rerun::ViewCoordinates::RIGHT_HAND_Y_DOWN;
+  return up.z > 0 ? rerun::ViewCoordinates::RIGHT_HAND_Z_UP : rerun::ViewCoordinates::RIGHT_HAND_Z_DOWN;
+}
 rerun::Transform3D toTransform(const Pose& T) {
   return rerun::Transform3D(rerun::components::Translation3D(static_cast<float>(T.t.x), static_cast<float>(T.t.y), static_cast<float>(T.t.z)),
                             rerun::Rotation3D(rerun::Quaternion::from_xyzw(static_cast<float>(T.q.x), static_cast<float>(T.q.y),
@@ -51,7 +63,13 @@ struct RerunSink::Impl {
     fx = static_cast<float>(cam.intrinsics[0]); fy = static_cast<float>(cam.intrinsics[1]);
     width = cam.width; height = cam.height;
     T_bc = poseFromMatrix(cam.T_bc);
-    rec.log_static("world", rerun::ViewCoordinates::RIGHT_HAND_Z_UP);
+    rec.log_static("world", worldViewCoordinates(T_bc));
+    rec.log_static("stats/frontend/ms", rerun::SeriesLines().with_names("frontend track() ms").with_colors(kColor3d));
+    rec.log_static("stats/frontend/tracks3d", rerun::SeriesLines().with_names("3-D tracks").with_colors(kColor2d));
+    rec.log_static("stats/backend/lba_ms", rerun::SeriesLines().with_names("local BA ms/KF (avg)").with_colors(kColorTraj));
+    rec.log_static("stats/backend/mapper_ms", rerun::SeriesLines().with_names("mapper ms/KF (avg)").with_colors(kColorKf));
+    rec.log("events", rerun::TextLog("mvslam started: " + std::to_string(width) + "x" + std::to_string(height) +
+                                     " | image view: green = 3-D tracks (map points), yellow = new 2-D tracks (waiting for triangulation), tails = KLT motion over the last 10 frames").with_level(rerun::TextLogLevel::Info));
     rec.log_static("world/cam/image", pinhole().with_image_plane_distance(0.2f));
     sub = sys.mapService().subscribe([this](const MapEvent& e) { onEvent(e); });
   }
@@ -90,21 +108,44 @@ struct RerunSink::Impl {
     setTime(last_t.load(), last_frame.load());
     if (const auto* ki = std::get_if<KeyframeInsertedEvent>(&e)) {
       logKeyframe(ki->keyframe_id, ki->T_wb);
+      const auto st = sys.stats();
+      rec.log("stats/backend/mapper_ms", rerun::Scalars(st.mapper_ms_avg));
+      rec.log("stats/backend/lba_ms", rerun::Scalars(st.optimizer_ms_avg));
+      rec.log("events", rerun::TextLog("mapper: keyframe " + std::to_string(ki->keyframe_id) + " inserted (map: " + std::to_string(st.map.keyframes) + " KF, " +
+                                       std::to_string(st.map.map_points) + " points)").with_level(rerun::TextLogLevel::Info));
       if (opt.points_every_keyframes > 0 && ++keyframes % opt.points_every_keyframes == 0) logPoints();
+    } else if (const auto* mu = std::get_if<MapPointsUpdatedEvent>(&e)) {
+      if (++lba_updates % 10 == 0) rec.log("events", rerun::TextLog("optimizer: local BA applied (map epoch " + std::to_string(mu->epoch) + ")").with_level(rerun::TextLogLevel::Debug));
     } else if (const auto* kr = std::get_if<KeyframeRemovedEvent>(&e)) {
       rec.log("world/kf/" + std::to_string(kr->keyframe_id), rerun::Clear::FLAT);
     } else if (std::get_if<MapResetEvent>(&e)) {
       rec.log("world/kf", rerun::Clear::RECURSIVE);
       rec.log("world/points", rerun::Clear::FLAT);
+      rec.log("events", rerun::TextLog("map reset").with_level(rerun::TextLogLevel::Warning));
     }
   }
-  void onFrame(const FrameInput& in, const TrackResult& r) {
+  void onFrame(const FrameInput& in, const TrackResult& r, double frame_ms) {
     std::lock_guard<std::mutex> lk(mu);
     ++frames;
     last_t.store(in.timestamp);
     last_frame.store(frames);
     setTime(in.timestamp, frames);
     if (r.pose) rec.log("world/cam", toTransform(compose(r.pose->T_wb, T_bc)));
+    for (const auto& t : r.debug_tracks) {  // per-track position history for the KLT tails
+      auto& tr = trails[t.id];
+      tr.pts.emplace_back(t.u, t.v);
+      if (tr.pts.size() > kTrailLen) tr.pts.pop_front();
+      tr.last_seen = frames;
+    }
+    for (auto it = trails.begin(); it != trails.end();) it = it->second.last_seen == frames ? std::next(it) : trails.erase(it);
+    if (frame_ms >= 0) rec.log("stats/frontend/ms", rerun::Scalars(frame_ms));
+    rec.log("stats/frontend/tracks3d", rerun::Scalars(static_cast<double>(r.stats.tracks3d)));
+    if (r.state != last_state) {
+      static const char* kNames[] = {"NotInitialized", "Ok", "RecentlyLost", "Lost"};
+      rec.log("events", rerun::TextLog(std::string("frontend: state -> ") + kNames[static_cast<int>(r.state) & 3]).with_level(r.state == TrackingState::Ok ? rerun::TextLogLevel::Info : rerun::TextLogLevel::Warning));
+      last_state = r.state;
+    }
+    if (r.keyframe_id) rec.log("events", rerun::TextLog("frontend: keyframe " + std::to_string(*r.keyframe_id) + " requested (" + std::to_string(r.stats.tracks) + " tracks, " + std::to_string(r.stats.tracks3d) + " 3-D)").with_level(rerun::TextLogLevel::Debug));
     if (opt.image_every > 0 && frames % static_cast<std::uint64_t>(opt.image_every) == 0 && !in.images.empty()) {
       const auto& im = in.images[0];
       if (im.format == PixelFormat::Gray8) {
@@ -114,12 +155,21 @@ struct RerunSink::Impl {
                     bytes.begin() + static_cast<std::ptrdiff_t>(y) * im.width);
         rec.log("world/cam/image", rerun::Image::from_grayscale8(bytes, {static_cast<uint32_t>(im.width), static_cast<uint32_t>(im.height)}));
       }
-      std::vector<rerun::Position2D> pts;
-      std::vector<rerun::Color> colors;
-      pts.reserve(r.debug_tracks.size());
-      colors.reserve(r.debug_tracks.size());
-      for (const auto& t : r.debug_tracks) { pts.emplace_back(t.u, t.v); colors.push_back(t.is3d ? kColor3d : kColor2d); }
-      rec.log("world/cam/image/tracks", rerun::Points2D(pts).with_colors(colors).with_radii(2.0f));
+      // KLT tracks: green = tracks that already have a map point (3-D), yellow = new 2-D tracks waiting
+      // for triangulation; the tails show where each track was over the last `trail_len` frames.
+      std::vector<rerun::Position2D> p3, p2;
+      std::vector<rerun::LineStrip2D> strips;
+      std::vector<rerun::Color> strip_colors;
+      for (const auto& t : r.debug_tracks) {
+        (t.is3d ? p3 : p2).emplace_back(t.u, t.v);
+        auto it = trails.find(t.id);
+        if (it == trails.end() || it->second.pts.size() < 2) continue;
+        strips.emplace_back(std::vector<rerun::Position2D>(it->second.pts.begin(), it->second.pts.end()));
+        strip_colors.push_back(t.is3d ? rerun::Color(40, 220, 60, 160) : rerun::Color(240, 200, 30, 160));
+      }
+      rec.log("world/cam/image/tracks/3d_map_points", rerun::Points2D(p3).with_colors(kColor3d).with_radii(2.5f));
+      rec.log("world/cam/image/tracks/2d_new", rerun::Points2D(p2).with_colors(kColor2d).with_radii(2.0f));
+      rec.log("world/cam/image/tracks/klt_flow", rerun::LineStrips2D(strips).with_colors(strip_colors).with_radii(0.7f));
     }
     if (opt.trajectory_every > 0 && frames % static_cast<std::uint64_t>(opt.trajectory_every) == 0) logTrajectory();
   }
@@ -141,8 +191,12 @@ struct RerunSink::Impl {
   float fx = 0, fy = 0;
   int width = 0, height = 0;
   Pose T_bc;
+  static constexpr std::size_t kTrailLen = 10;
+  struct Trail { std::deque<rerun::Position2D> pts; std::uint64_t last_seen = 0; };
+  std::unordered_map<std::uint64_t, Trail> trails;
   std::uint64_t frames = 0;
-  int keyframes = 0;
+  int keyframes = 0, lba_updates = 0;
+  TrackingState last_state = TrackingState::NotInitialized;
   std::atomic<Timestamp> last_t{0};
   std::atomic<std::uint64_t> last_frame{0};
   bool finished = false;
@@ -150,7 +204,7 @@ struct RerunSink::Impl {
 
 RerunSink::RerunSink(System& system, RerunOptions options) : impl_(std::make_unique<Impl>(system, std::move(options))) {}
 RerunSink::~RerunSink() { if (impl_) impl_->finish(); }
-void RerunSink::onFrame(const FrameInput& input, const TrackResult& result) { impl_->onFrame(input, result); }
+void RerunSink::onFrame(const FrameInput& input, const TrackResult& result, double frame_ms) { impl_->onFrame(input, result, frame_ms); }
 void RerunSink::finish() { impl_->finish(); }
 
 }  // namespace mvslam::viz

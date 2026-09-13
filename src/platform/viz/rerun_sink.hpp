@@ -1,8 +1,10 @@
 #pragma once
 // Rerun viewer sink (Observer over the public API). Logs the camera pose/image/tracks per frame,
 // keyframe frustums and the map point cloud from MapService events and snapshots, and the
-// keyframe-relative trajectory. Zero coupling with the core: only mvslam/api headers are used, so
-// the same adapter works against a packaged libmvslam. Target: an .rrd file or a live viewer.
+// keyframe-relative trajectory, plus per-frame/per-keyframe timing series (`stats/**`) and an event
+// log (`events`) that show the frontend and the backend workers at work. Zero coupling with the core:
+// only mvslam/api headers are used, so the same adapter works against a packaged libmvslam.
+// Target: an .rrd file or a live viewer. Layout: viz/mvslam.rbl (Rerun blueprint for app id `mvslam`).
 #include <memory>
 #include <string>
 
@@ -25,8 +27,8 @@ class RerunSink {
   ~RerunSink();
   RerunSink(const RerunSink&) = delete;
   RerunSink& operator=(const RerunSink&) = delete;
-  // Call after System::track() for every frame (caller thread).
-  void onFrame(const FrameInput& input, const TrackResult& result);
+  // Call after System::track() for every frame (caller thread). `frame_ms`: wall time of track() (<0 = unknown).
+  void onFrame(const FrameInput& input, const TrackResult& result, double frame_ms = -1);
   // Final map + trajectory, then flush. Safe to call once; the destructor calls it too.
   void finish();
 

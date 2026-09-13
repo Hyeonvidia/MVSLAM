@@ -4,14 +4,17 @@
 // Usage: mvslam_dataset_runner --config <yaml> (--euroc <mav0> | --kitti <seq dir> [--kitti-calib calib.txt] | --tum <rgbd dir>) --out traj.txt
 //        [--execution offline|realtime] [--save-map map.mvs] [--load-map map.mvs] [--localize-every N --localize-out loc.txt [--no-track 1]]
 //        [--start-frame N] [--localize-arm 1]   (start mid-sequence and relocalize into the loaded map, then keep tracking)
+//        [--pace F]   play at F x the dataset rate (sleep between frames by timestamp; 0 = as fast as possible) for live viewing
 //        [--rerun out.rrd | --rerun rerun+http://host.docker.internal:9876/proxy] [--rerun-image-every N]
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <thread>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -134,6 +137,7 @@ int main(int argc, char** argv) {
   std::string config, euroc, kitti, kitti_calib, tum, out = "trajectory.txt", execution, overlay_dir, rerun_target, save_map, load_map, localize_out;
   int overlay_every = 20, max_frames = 0, status_every = 200, status_from = 0, rerun_image_every = 5, localize_every = 0, start_frame = 0;
   bool no_track = false, localize_arm = false;
+  double pace = 0;
   std::string log_level;
   for (int i = 1; i + 1 < argc; i += 2) {
     const std::string k = argv[i], v = argv[i + 1];
@@ -142,6 +146,7 @@ int main(int argc, char** argv) {
     else if (k == "--localize-every") localize_every = std::stoi(v); else if (k == "--localize-out") localize_out = v;
     else if (k == "--no-track") { no_track = v == "1" || v == "true"; }
     else if (k == "--start-frame") start_frame = std::stoi(v); else if (k == "--localize-arm") { localize_arm = v == "1" || v == "true"; }
+    else if (k == "--pace") pace = std::stod(v);
     else if (k == "--out") out = v; else if (k == "--execution") execution = v;
     else if (k == "--overlay-dir") overlay_dir = v; else if (k == "--overlay-every") overlay_every = std::stoi(v);
     else if (k == "--max-frames") max_frames = std::stoi(v);
@@ -213,7 +218,13 @@ int main(int argc, char** argv) {
     std::size_t imu_i = 0;
     int keyframes = 0;
     const std::size_t n_frames = max_frames > 0 ? std::min<std::size_t>(cam0.size(), static_cast<std::size_t>(max_frames)) : cam0.size();
+    const auto wall0 = std::chrono::steady_clock::now();
+    const mvslam::Timestamp t0 = cam0.empty() ? 0 : cam0[static_cast<std::size_t>(std::max(0, start_frame))].t;
     for (std::size_t i = static_cast<std::size_t>(std::max(0, start_frame)); i < n_frames; ++i) {
+      if (pace > 0) {  // live viewing: wait until the dataset time of this frame (scaled by 1/pace) has elapsed on the wall clock
+        const auto due = wall0 + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(static_cast<double>(cam0[i].t - t0) * 1e-9 / pace));
+        std::this_thread::sleep_until(due);
+      }
       while (imu_i < imu.size() && imu[imu_i].timestamp <= cam0[i].t) slam.pushImu(imu[imu_i++]);
       cv::Mat l = cv::imread(left_dir + cam0[i].file, cv::IMREAD_GRAYSCALE);
       cv::Mat r;
@@ -237,10 +248,12 @@ int main(int argc, char** argv) {
       } else if (no_track) {
         continue;
       }
+      const auto t_track0 = std::chrono::steady_clock::now();
       const auto res = slam.track(in);
+      const double track_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_track0).count();
       if (res.stats.keyframe_inserted) ++keyframes;
 #ifdef MVSLAM_HAVE_RERUN
-      if (viewer) viewer->onFrame(in, res);
+      if (viewer) viewer->onFrame(in, res, track_ms);
 #endif
       if (!overlay_dir.empty() && overlay_every > 0 && i % static_cast<std::size_t>(overlay_every) == 0) {
         cv::Mat vis;

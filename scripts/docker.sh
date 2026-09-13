@@ -8,6 +8,7 @@
 #   scripts/docker.sh tum <config> <TUM_RGBD/seq> [preset] [out] [runner args]    TUM RGB-D runner
 #   scripts/docker.sh eval <EuRoC/MH01> <traj> [--sim3] | eval-kitti <NN> <traj> | eval-tum <TUM_RGBD/seq> <traj>
 #   scripts/docker.sh eval-loc <ref_traj> <loc.txt> [EuRoC/V101]                   relocalization success rate
+#   scripts/docker.sh live (euroc|kitti|tum) <seq> <config> [preset] [pace]        live run -> Rerun web viewer at http://localhost:9090
 #   scripts/docker.sh shell                  interactive shell
 #   scripts/docker.sh clean                  remove build/ccache volumes
 set -euo pipefail
@@ -25,7 +26,8 @@ case "$cmd" in
   tum)   docker compose run --rm dev docker/scripts/run_tum.sh "$@" ;;
   eval-tum) docker compose run --rm dev docker/scripts/evaluate_tum.sh "$@" ;;
   eval-loc) docker compose run --rm dev docker/scripts/evaluate_localization.sh "$@" ;;
+  live)  docker compose run --rm --service-ports dev docker/scripts/run_live.sh "$@" ;;
   shell) docker compose run --rm dev bash "$@" ;;
   clean) docker compose down -v ;;
-  *) sed -n '2,14p' "$0" ;;
+  *) sed -n '2,15p' "$0" ;;
 esac

@@ -23,6 +23,11 @@ RUN curl -sSL -o /tmp/rerun_cpp_sdk.zip "https://github.com/rerun-io/rerun/relea
     && cmake -S /opt/src/rerun_cpp_sdk -B /opt/src/rerun_build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/rerun \
     && cmake --build /opt/src/rerun_build --parallel "$(nproc)" && cmake --install /opt/src/rerun_build \
     && rm -rf /opt/src
+# Rerun CLI (viewer + gRPC server + web viewer) inside the image: `docker/scripts/run_live.sh` serves the web
+# viewer on :9090 so a browser on the host follows a run live without installing anything on the host.
+ARG RERUN_CLI_SHA256=49916e528d7e6a5c00794dadcec260dd32b27fd583784d6fc49934d9074b7260
+RUN curl -sSL -o /usr/local/bin/rerun "https://github.com/rerun-io/rerun/releases/download/${RERUN_VERSION}/rerun-cli-${RERUN_VERSION}-aarch64-unknown-linux-gnu" \
+    && echo "${RERUN_CLI_SHA256}  /usr/local/bin/rerun" | sha256sum -c - && chmod +x /usr/local/bin/rerun
 # The repo is bind-mounted from a different owner; git must not refuse it.
 RUN git config --global --add safe.directory '*'
 ENV CCACHE_DIR=/ccache \

@@ -99,6 +99,7 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
         auto map = raw->maps->active();
         const auto newer = [raw, kf = job.keyframe.value] { return raw->latest_keyframe_submitted.load(std::memory_order_relaxed) != kf; };
         const auto rep = raw->lba->run(*map, job.keyframe, st, newer);
+        if (rep.applied && raw->maps->events().hasSubscribers()) raw->maps->events().publish(MapPointsUpdatedEvent{map->id().value, map->changeEpoch()});
         if (rep.applied && raw->config.backend.kf_culling) {
           const auto removed = map->withWriteLock([&](map::Map& m) { return raw->culler->cull(m, job.keyframe); });
           for (auto k : removed) if (auto* pr = raw->maps->placeRecognizer()) pr->erase(k);

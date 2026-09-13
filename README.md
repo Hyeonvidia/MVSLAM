@@ -56,14 +56,20 @@ scripts/docker.sh shell          # 컨테이너 셸
 러너 옵션: 입력 `--euroc <mav0>` / `--kitti <sequences/NN> [--kitti-calib calib.txt]`(P0/P1로 rig 자동 설정) / `--tum <rgbd dir>`; `--out`, `--execution offline|realtime`, `--max-frames N`, `--start-frame N`, `--status-every N`, `--overlay-dir DIR [--overlay-every N]`(트랙 오버레이 PNG), `--log-level debug`; 맵 `--save-map map.mvs`, `--load-map map.mvs`, `--localize-arm 1`(로드 맵에 재측위 후 추적 계속), `--localize-every N --localize-out loc.txt [--no-track 1]`(무상태 재측위 평가 → `scripts/docker.sh eval-loc`); 뷰어 `--rerun out.rrd | rerun+http://host.docker.internal:9876/proxy [--rerun-image-every N]`.
 
 ## 뷰어 (Rerun)
-코어는 뷰어를 모른다. `src/platform/viz/rerun_sink`가 공개 API(이벤트·스냅샷)만으로 카메라·이미지·트랙·KF 프러스텀·맵 포인트·궤적을 Rerun에 기록한다([ADR-0011](docs/adr/0011-rerun-viewer.md)).
+코어는 뷰어를 모른다. `src/platform/viz/rerun_sink`가 공개 API(이벤트·스냅샷)만으로 기록한다([ADR-0011](docs/adr/0011-rerun-viewer.md)): 3D 맵(파랑 프러스텀 = 키프레임, 회색 = 맵 포인트, 빨강 = 궤적, 큰 프러스텀 = 현재 카메라), 카메라 영상 위 KLT 트랙(초록 = 맵 포인트를 가진 3-D 트랙, 노랑 = 삼각측량을 기다리는 새 2-D 트랙, 꼬리 = 최근 10프레임 이동), 프론트엔드 `track()` ms·3-D 트랙 수·백엔드 mapper/LBA ms 시계열, 이벤트 로그(키프레임 요청/삽입, LBA 적용, 상태 전이). 레이아웃은 `viz/mvslam.rbl`(app id `mvslam`용 블루프린트, `viz/make_blueprint.py`로 생성).
+
+세 가지 사용법:
 ```bash
-pip install rerun-sdk==0.37.2                     # 호스트 뷰어 (SDK와 같은 버전)
+# 1) 브라우저 (호스트에 설치할 것 없음): 컨테이너 안의 Rerun이 웹 뷰어를 :9090에 띄우고 실시간 재생 속도(--pace)로 스트리밍
+scripts/docker.sh live euroc EuRoC/MH01 configs/euroc_stereo_imu.yaml      # → http://localhost:9090 (kitti <NN> | tum <seq> 도 가능)
+# 2) 호스트 네이티브 뷰어 (rerun-cli 0.37.2, SDK와 같은 버전) + 컨테이너에서 접속
+rerun --port 9876 viz/mvslam.rbl &
+scripts/docker.sh run configs/euroc_stereo_imu.yaml EuRoC/MH01 docker-release /results/MH01.txt --execution realtime --pace 1 --rerun rerun+http://host.docker.internal:9876/proxy --rerun-image-every 2
+# 3) 기록 파일: 컨테이너에서 .rrd로 저장한 뒤 나중에 재생
 scripts/docker.sh run configs/euroc_stereo_imu.yaml EuRoC/MH01 docker-release /results/MH01.txt --execution offline --rerun /results/MH01.rrd
-rerun results/MH01.rrd                            # 기록 재생
-rerun &  # 실시간: 호스트 뷰어를 띄운 뒤
-scripts/docker.sh run configs/euroc_stereo_imu.yaml EuRoC/MH01 docker-release /results/MH01.txt --rerun rerun+http://host.docker.internal:9876/proxy
+rerun viz/mvslam.rbl results/MH01.rrd
 ```
+`--pace 1`은 데이터셋 타임스탬프 속도(EuRoC 20 Hz)로 재생하고 0이면 최대 속도. 호스트 뷰어는 GitHub 릴리스의 `rerun-cli-0.37.2-aarch64-apple-darwin`(또는 Python ≥ 3.10에서 `pip install rerun-sdk==0.37.2`).
 
 ## 사용 예
 ```cpp
