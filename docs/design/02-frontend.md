@@ -82,7 +82,7 @@ pose ← IPoseOptimizer.optimize(pose, 3D 관측)   // MotionOnlyBa: Huber √5.
 
 - 검출 `GridShiTomasiDetector`: 셀 35 px(accurate)/45/50(프리셋), **기존 트랙 점유 셀 스킵**, 셀당 최강 1점 + `cornerSubPix`, 적응 품질(검출률 < 33% → 임계 ½, > 90% → ×1.5). 대안 `GridFastDetector`.
 - 기술 `OrbDescriptorExtractor`(단일 레벨, 회전 보정) — 재측위·루프·로컬맵 재관측용. OpenCV `ORB::create(…, nlevels=1)`. BRIEF(xfeatures2d)는 의존성 때문에 비채택(OV²SLAM 실측: ORB 폴백과 동등).
-- 깊이 `IDepthSource`: `KltStereoMatcher`(3D 트랙은 투영 prior 1레벨, 2D 트랙은 좌표 그대로 4레벨; fb-check 0.5 px, Sampson ≤ 2 px, 우측 재투영 ≤ 3 px, [min,max] depth; 역방향 KLT는 **원위치에서 시작**해야 한다 — 추적 위치에서 시작하면 EuRoC에서 273점 중 31점만 살아남는다, P0 실측), `DepthImageSource`(유효 범위 [min,max], σ_z = z²/(f·b_virtual), b_virtual 기본 0.08 m).
+- 깊이 `IDepthSource`: `KltStereoMatcher`(3D 트랙은 투영 prior 1레벨, 2D 트랙은 좌표 그대로 4레벨; fb-check 0.5 px, Sampson ≤ 2 px, 우측 재투영 ≤ 3 px, [min,max] depth; 역방향 KLT는 **원위치에서 시작**해야 한다 — 추적 위치에서 시작하면 EuRoC에서 273점 중 31점만 살아남는다, P0 실측), `DepthImageSource`(유효 범위 [min,max]; 깊이는 **가상 우측 관측** u_r = u − f·b_virtual/z, b_virtual 기본 0.08 m로 KF에 저장되어 LBA에서 두 번째 재투영 잔차가 된다 — ORB-SLAM2 RGB-D. 내부 rig는 카메라0 옆 b_virtual 위치에 가상 카메라1을 둔다(공개 Config는 카메라 1대). fr1_desk 실측: 이 잔차 없이 0.080 m, 있으면 0.030 m).
 - close/far: `depth < ThDepth·baseline`(EuRoC 60·b) — KF 시 즉시 MP 생성 대상(ORB), far는 temporal 삼각측량 대기.
 
 ### 2.8 초기화
@@ -107,7 +107,7 @@ pose ← IPoseOptimizer.optimize(pose, 3D 관측)   // MotionOnlyBa: Huber √5.
 | 키 | 기본 | 출처 |
 |---|---|---|
 | `clahe / clahe_clip` | true / 3.0 | OV²SLAM accurate |
-| `klt_window / klt_levels / klt_fb_max_px / klt_max_err` | 9 / 3 / 0.5 / 30 | OV²SLAM |
+| `klt_window / klt_levels / klt_fb_max_px / klt_max_err` | 9 / 3 / 0.5 / 30 (TUM fr1 프리셋: 21 / 4 / 1.5 — 30 Hz 핸드헬드 블러에서 기본값은 프레임당 트랙 절반을 잃고 붕괴) | OV²SLAM |
 | `p3p_survival_ratio / p3p_min_tracks` | 0.33 / 8 | OV²SLAM 코드(논문 0.5) |
 | `outlier_parallax_gate_px / ransac_iters / ransac_err_px` | 6 / 100 / 3 | OV²SLAM |
 | `pose_huber_chi2 / pose_max_iters / pose_max_time_ms` | 5.9915 / 5 / 5 | OV²SLAM |
@@ -118,7 +118,7 @@ pose ← IPoseOptimizer.optimize(pose, 3D 관측)   // MotionOnlyBa: Huber √5.
 | `init_min_features / min_3d_for_ok / reinit_after_frames` | 100 / 15 / 10 | P0 |
 | `mono_init_min_parallax_px / mono_init_median_depth` | 20 / 1.0 | ORB |
 | `recently_lost_inertial_s / recently_lost_visual_s / new_map_min_keyframes` | 5 / 3 / 10 | ORB |
-| `reloc_min_bow_matches / reloc_min_inliers` | 15 / 50 | ORB |
+| `reloc_min_inliers / reloc_max_attempts / reloc_detector_cell_px / reloc_max_hamming / reloc_ransac_iters / reloc_min_lost_frames` | 20 / 30 / 20 / 60 / 1000 / 5 (한 프레임 실패는 다음 프레임 P3P 재시드로 회복되므로 즉시 재측위하면 트랙이 줄어 정확도가 떨어짐 — MH01 mono 0.14 → 0.23 m) | P1 V101·fr1 튜닝 (P3P-RANSAC 100회로는 블러 후 재측위 후보의 낮은 inlier 비율에서 실패) |
 
 ## 5. 테스트
 - 단위(`tests/unit/`): `test_tracking_state_machine`(전이표), `test_keyframe_policy`(역압·시간 조건 시나리오), `test_two_view_reconstruction`(일반 장면 → E, 평면 장면 → H, 순수 회전 기각, 표본 부족), `test_stereo_matcher`(합성 텍스처를 시차 16 px로 이동 → depth = f·b/d 복원, 우측 영상 없음 → 깊이 없음).

@@ -25,6 +25,7 @@ struct FrontendComponents {
   std::unique_ptr<IInitializer> initializer;
   std::unique_ptr<IDescriptorExtractor> descriptor;   // LOST-time descriptors (relocalization)
   std::unique_ptr<IFeatureDetector> reloc_detector;    // denser grid for relocalization queries
+  std::unique_ptr<IRobustPoseSolver> reloc_p3p;        // more RANSAC iterations than the tracking fallback
   std::unique_ptr<Relocalizer> relocalizer;            // null: relocalization disabled
 };
 
@@ -71,6 +72,7 @@ class VisualFrontend {
   int max_tracks_ = 0;
   bool optimizer_busy_ = false;
   int reloc_armed_ = 0;
+  int lost_frames_ = 0;   // consecutive frames with a failed pose estimate
   std::optional<Result<Pose>> reloc_outcome_;
 };
 

@@ -1,5 +1,7 @@
 #pragma once
-// RGB-D depth source: reads the registered depth image at each keypoint (no OpenCV needed).
+// RGB-D depth source: reads the registered depth image at each keypoint (no OpenCV needed) and
+// expresses it as a virtual right-view observation u_r = u - fx * b_virtual / z (docs/design/02 §2.7),
+// which the mapper stores as has_right/uv_right so BA constrains depth (ORB-SLAM2 RGB-D).
 #include "frontend/interfaces.hpp"
 #include "mvslam/api/config.hpp"
 
@@ -7,7 +9,7 @@ namespace mvslam::frontend {
 
 class DepthImageSource final : public IDepthSource {
  public:
-  explicit DepthImageSource(const FrontendConfig& c) : c_(c) {}
+  DepthImageSource(const FrontendConfig& c, double fx) : c_(c), fx_(fx) {}
   std::vector<DepthMeasurement> measure(const KeyframeRequest& req) override {
     std::vector<DepthMeasurement> out(req.frame.tracks.size());
     const auto& d = req.depth;
@@ -25,12 +27,17 @@ class DepthImageSource final : public IDepthSource {
         float v; std::memcpy(&v, row + static_cast<std::size_t>(x) * 4, 4);
         z = v;
       }
-      if (z >= c_.min_depth_m && z <= c_.max_depth_m) out[i].depth = z;
+      if (z >= c_.min_depth_m && z <= c_.max_depth_m) {
+        out[i].depth = z;
+        out[i].has_right = c_.rgbd_virtual_baseline_m > 0;
+        out[i].uv_right = core::Vec2(req.frame.tracks[i].uv.x() - fx_ * c_.rgbd_virtual_baseline_m / z, req.frame.tracks[i].uv.y());
+      }
     }
     return out;
   }
  private:
   FrontendConfig c_;
+  double fx_;
 };
 
 }  // namespace mvslam::frontend

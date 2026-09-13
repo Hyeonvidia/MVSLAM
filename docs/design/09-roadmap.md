@@ -6,7 +6,7 @@
 |---|---|---|
 | **P-skel (완료, 본 세션)** | 설계 문서 11편, 저장소·서브모듈 11종 태그 고정, CMake/프리셋/CI/Docker, 공개 API, core/sensors/map/backend graph·Ceres 어댑터·marginalizer·motion-only BA, frontend 인터페이스·상태기계·KF 정책·KLT/격자 검출(OpenCV), 단위 테스트 | `cmake --preset macos-release` configure·build 통과, 단위 테스트 전부 통과 |
 | **P0 — mono/stereo VO(Ceres) (완료, 2026-09-14)** | `MonoTwoViewInitializer`(H/E 병렬, 5-pt USAC), `DepthInitializer`, E-RANSAC 필터, `KltStereoMatcher`, 프론트엔드 KF 시점 격자 검출, Mapper(기술·temporal 삼각측량·`LocalMapMatcher`+트랙 alias·MP culling), `CovisibilityWindow` LBA + 선점/시간 상한/robust 발산 가드/depth 사전 필터, `KeyframeCuller`(구현·**기본 OFF**, ADR-0009) + culled pose 체인, `trajectory()` KF 상대 궤적, 데이터셋 러너(EuRoC·KITTI odometry, calib 자동 반영) + `evaluate_ate.py`(EuRoC/KITTI GT, SE3/Sim3) | **달성**: MH01 stereo Offline ATE **0.032 m**(게이트 ≤ 0.06), 프론트엔드 **3.4 ms/frame**(도커·M4), 2회 실행 궤적 SHA 동일. 부가 실측: MH01 mono Sim3 ATE 0.142 m(scale 3.7, 루프 없음), KITTI 00 stereo ATE 4.99 m(3.7 km, 루프 클로징 없음; P3 게이트 1.5 m는 루프 후 목표) |
-| **P1 — RGB-D, 재측위, 맵 저장/로드 (구현 완료 2026-09-14, RGB-D 게이트 측정 대기)** | `DepthImageSource` + TUM RGB-D 러너(`--tum`), `Relocalizer`(격자 코너+ORB → `HbstPlaceRecognizer` 온라인 후보(어휘 파일 없음, ADR-0010) → 매칭 → P3P → BA → 투영 확장), cereal PortableBinary 직렬화(id 카운터·IMU 상태·alias·culled 기록), `MapService::load/save/localize/snapshot`, `System::localize`, KannalaBrandt8(단위 테스트), Rerun 뷰어 어댑터(ADR-0011) | **달성**: 저장→로드→재측위 V101 146/146 재측위, 5 cm/3° 안 145회(**99.3%**), 로드 맵 연속 추적 ATE 0.050 m; 라운드트립 **바이트 동일**(단위 테스트 + 21 MB 실맵). **미측정**: TUM fr1_desk RGB-D ATE ≤ 0.05 m — 데이터셋이 로컬에 없음(다운로드 후 `scripts/docker.sh tum configs/tum_rgbd_fr1.yaml TUM_RGBD/rgbd_dataset_freiburg1_desk` → `eval-tum`) |
+| **P1 — RGB-D, 재측위, 맵 저장/로드 (완료 2026-09-14)** | `DepthImageSource` + TUM RGB-D 러너(`--tum`), `Relocalizer`(격자 코너+ORB → `HbstPlaceRecognizer` 온라인 후보(어휘 파일 없음, ADR-0010) → 매칭 → P3P → BA → 투영 확장), cereal PortableBinary 직렬화(id 카운터·IMU 상태·alias·culled 기록), `MapService::load/save/localize/snapshot`, `System::localize`, KannalaBrandt8(단위 테스트), Rerun 뷰어 어댑터(ADR-0011) | **달성**: 저장→로드→재측위 V101 146/146 재측위, 5 cm/3° 안 145회(**99.3%**), 로드 맵 연속 추적 ATE 0.050 m; 라운드트립 **바이트 동일**(단위 테스트 + 21 MB 실맵). TUM fr1_desk RGB-D ATE **0.030 m**(게이트 ≤ 0.05; 595/596 포즈, 추적 상실 없음) — 깊이를 가상 우측 관측 u_r = u − f·b/z로 BA에 넣어(ORB-SLAM2) 0.080 → 0.030 m, fr1의 빠른 핸드헬드 움직임에는 KLT 창 21 px·4레벨·fb 1.5 px 프리셋 필요(기본 9 px·3레벨은 프레임당 트랙 절반을 잃고 붕괴) |
 | **P2 — IMU** | `Preintegrator`, `ImuFactor`(Jacobian 테스트), `ImuPredictor`, `PoseInertialOptimizer`(prior via `Marginalizer`), `ImuInitializer` 상태기계(staged prior + scale 분산), `TemporalWindow` 관성 LBA, stereo/rgbd scale 고정 | EuRoC MH01 stereo-inertial ATE ≤ 0.05 m(ORB 실측 0.041 m), mono-inertial ≤ 0.08 m; 초기화 시간 ≤ 15 s; 관성 상실 연명 5 s 테스트 |
 | **P3 — 루프 클로징·다중 맵** | `LoopVerifier`(5단+3표), `Sim3/Se3/Yaw4Dof Corrector`, `PoseGraphOptimizer`(essential graph), `LooseBA`, 선택적 GBA(지연 적용), `MapStore.merge`(rigid snap / welding), `PosesCorrected` 이벤트 | KITTI 00 stereo ATE ≤ 1.5 m(ORB 1.2 m), EuRoC MH05 루프 후 개선 확인, LOST→새 맵→병합 시나리오 통합 테스트, 장시간 루프 시퀀스에서 메모리 단조 증가 없음 |
 | **P4 — 어댑터·플랫폼** | `G2oSolver`·`GtsamSolver` 어댑터 + 등가성 봉투 테스트, Jetson Orin Docker 실측, iOS XCFramework, C ABI, Python 바인딩(nanobind), 다중 카메라(N>2) FIG식 교차 추적 | 세 어댑터 GT 복구 동일 정확도; Orin 프레임당 ≤ 15 ms; iOS 빌드 통과 |
@@ -16,7 +16,7 @@
 | 시퀀스 | 모드 | 프레임/포즈 | KF | MP | 프론트엔드 | Mapper | LBA | ATE RMSE |
 |---|---|---|---|---|---|---|---|---|
 | EuRoC MH01 | stereo | 3682 / 3681 | 673 | 15.8k | 3.4 ms | 2.6 ms/KF | 115 ms/KF | **0.032 m** (SE3) |
-| EuRoC MH01 | mono | 3682 / 3659 | 292 | 11.1k | 2.7 ms | 1.4 ms/KF | 33 ms/KF | 0.142 m (Sim3, s=3.70) |
+| EuRoC MH01 | mono | 3682 / 3673 | 297 | 11.1k | 2.6 ms | 1.4 ms/KF | 33 ms/KF | 0.142 m (Sim3, s=3.70; KF culling ON — OFF이면 0.230 m, ADR-0009 보강) |
 | KITTI 00 | stereo | 4541 / 4540 | 1580 | 77.9k | 4.9 ms | 2.6 ms/KF | 67 ms/KF | 4.99 m (SE3) |
 
 P0에서 확정된 설계 편차: 검출은 프론트엔드 KF 시점([02](02-frontend.md) §2.7), 점 파라미터화는 XYZ([03](03-backend.md) §2), KF culling 기본 OFF([ADR-0009](../adr/0009-keyframe-culling-off-for-klt.md)), Offline 실행 모드가 결정성의 근거([ADR-0007](../adr/0007-realtime-offline-execution-modes.md)).
@@ -29,7 +29,8 @@ P0에서 확정된 설계 편차: 검출은 프론트엔드 KF 시점([02](02-fr
 | 무상태 재측위(`System::localize`, 20프레임마다 146회) | 146회 성공, 5 cm/3° 안 145회(99.3%), 위치 중앙 4.6 mm·최대 4.0 cm, 회전 중앙 0.09°, 질의당 ~70 ms |
 | 로드 맵 재측위 후 연속 추적(프레임 1000부터) | 첫 프레임에서 재측위(75 inlier) → 1912 프레임 추적, ATE 0.050 m |
 | 튜닝 | 질의 격자 20 px, Hamming 60, inlier ≥ 20 (30일 때 52.7%: 대부분 24-27 inlier에서 기각) |
-| 미측정 | TUM fr1_desk RGB-D(데이터셋 필요), TUM-VI 어안(KB8 모델은 단위 테스트만) |
+| TUM fr1_desk RGB-D (30 Hz 핸드헬드) | 596 프레임, 165 KF, 5.1k MP, 프론트엔드 3.5 ms, **ATE 0.030 m** (가상 우측 관측 없이 0.080 m; 기본 KLT 프리셋으로는 2회 추적 상실·새 맵) |
+| 미측정 | TUM-VI 어안(KB8 모델은 단위 테스트만) |
 
 ## 리스크와 대응
 | 리스크 | 대응 |

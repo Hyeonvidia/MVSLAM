@@ -185,8 +185,13 @@ TrackResult VisualFrontend::process(const FrameInput& input, std::optional<Keyfr
     cur.T_wb = predicted;
     IFeatureTracker::Stats st;
     if (c_.tracker && last_image_) st = c_.tracker->track(*last_image_, *image, last_, cur, predicted);
-    if (c_.outlier_filter && phase_ == Phase::Tracking) c_.outlier_filter->filter(last_kf_frame_, cur);
+    const int before_filter = static_cast<int>(cur.tracks.size());
+    int filtered = 0;
+    if (c_.outlier_filter && phase_ == Phase::Tracking) filtered = c_.outlier_filter->filter(last_kf_frame_, cur);
     bool ok = estimatePose(cur, st, r);
+    lost_frames_ = ok ? 0 : lost_frames_ + 1;
+    MVSLAM_DEBUG("frame {}: klt 3d {}/{} 2d {}/{} -> {} tracks, E-filter -{}, 3d {}, inliers {}, ok {}", cur.id, st.survived3d, st.attempted3d,
+                 st.survived2d, st.attempted2d, before_filter, filtered, cur.num3d(), r.stats.inliers, ok);
 
     if (phase_ == Phase::WaitingFor3d) {
       if (ok && cur.num3d() >= cfg_.min_3d_for_ok) {
@@ -204,7 +209,9 @@ TrackResult VisualFrontend::process(const FrameInput& input, std::optional<Keyfr
         case TrackingStateMachine::Action::StartNewMap: maps_.startNewMap(); restartBootstrap(); break;
         case TrackingStateMachine::Action::ResetMap: maps_.resetActive(); restartBootstrap(); break;
         case TrackingStateMachine::Action::TryRelocalize:
-          if (tryRelocalize(cur, image, input, reloc_armed_ > 0)) {
+          // A single failed frame is usually recovered by the next frame's P3P re-seed; relocalizing right away
+          // replaces the KLT tracks with a smaller, less accurate set (MH01 mono: Sim3 ATE 0.14 -> 0.23 m).
+          if ((lost_frames_ >= cfg_.reloc_min_lost_frames || reloc_armed_ > 0) && tryRelocalize(cur, image, input, reloc_armed_ > 0)) {
             ok = true;
             r.stats.inliers = static_cast<int>(cur.tracks.size());
             if (reloc_armed_ > 0) { reloc_armed_ = 0; reloc_outcome_ = Result<Pose>::success(core::fromSE3(cur.T_wb)); }

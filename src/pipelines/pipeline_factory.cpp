@@ -1,6 +1,7 @@
 #include "pipelines/pipeline_factory.hpp"
 
 #include "backend/pose_optimizer.hpp"
+#include "core/math/se3.hpp"
 #include "map/hbst_place_recognizer.hpp"
 #include "core/log.hpp"
 #include "frontend/depth_image_source.hpp"
@@ -36,7 +37,20 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
   cfg.validate();
   auto p = std::make_unique<Pipeline>();
   p->config = cfg;
-  p->rig = std::make_unique<sensors::CameraRig>(cfg.rig);
+  RigConfig rig_cfg = cfg.rig;
+  if (cfg.sensor == SensorMode::RgbD && rig_cfg.cameras.size() == 1) {
+    // Virtual right camera at rgbd_virtual_baseline_m along the camera x-axis: depth measurements are
+    // expressed as a right-view observation u_r = u - fx*b/z and enter BA as a second reprojection
+    // residual (ORB-SLAM2 RGB-D). The public config keeps a single camera; only the internal rig has two.
+    CameraConfig right = rig_cfg.cameras[0];
+    const core::SE3 T_bc0 = core::toSE3(right.T_bc);
+    const core::SE3 T_bc1 = T_bc0 * core::SE3(core::SO3(), core::Vec3(cfg.frontend.rgbd_virtual_baseline_m, 0, 0));
+    const core::Mat4 M = T_bc1.matrix();
+    for (int r = 0; r < 4; ++r) for (int c = 0; c < 4; ++c) right.T_bc[static_cast<std::size_t>(r * 4 + c)] = M(r, c);
+    rig_cfg.cameras.push_back(right);
+    rig_cfg.stereo_baseline_m = cfg.frontend.rgbd_virtual_baseline_m;
+  }
+  p->rig = std::make_unique<sensors::CameraRig>(rig_cfg);
   p->maps = std::make_unique<map::MapStore>();
   switch (cfg.loop.recognizer) {  // relocalization (P1) and loop candidates (P3) share the recognizer
     case PlaceRecognizerType::Incremental: p->maps->setPlaceRecognizer(std::make_unique<map::HbstPlaceRecognizer>()); break;
@@ -67,8 +81,10 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
   if (cfg.loop.recognizer != PlaceRecognizerType::None && fc.detector && fc.robust_pose) {
     FrontendConfig rcfg = fcfg;
     rcfg.detector_cell_px = fcfg.reloc_detector_cell_px;
+    rcfg.ransac_iters = fcfg.reloc_ransac_iters;
     fc.reloc_detector = std::make_unique<frontend::cv_impl::GridShiTomasiDetector>(rcfg);
-    fc.relocalizer = std::make_unique<frontend::Relocalizer>(fcfg, *p->rig, *p->maps, *fc.reloc_detector, *fc.descriptor, *fc.robust_pose, *fc.pose_optimizer);
+    fc.reloc_p3p = std::make_unique<frontend::cv_impl::P3pRansacSolver>(rcfg, *p->rig);
+    fc.relocalizer = std::make_unique<frontend::Relocalizer>(fcfg, *p->rig, *p->maps, *fc.reloc_detector, *fc.descriptor, *fc.reloc_p3p, *fc.pose_optimizer);
   }
 #endif
   if (!fc.detector || !fc.tracker) {
@@ -83,7 +99,7 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
   p->frontend = std::make_unique<frontend::VisualFrontend>(fcfg, cfg.sensor, inertial, std::move(fc), *p->rig, *p->maps);
 
   p->mapper_logic = std::make_unique<backend::Mapper>(cfg, *p->rig, *p->maps);
-  if (cfg.sensor == SensorMode::RgbD) p->mapper_logic->setDepthSource(std::make_unique<frontend::DepthImageSource>(cfg.frontend));
+  if (cfg.sensor == SensorMode::RgbD) p->mapper_logic->setDepthSource(std::make_unique<frontend::DepthImageSource>(cfg.frontend, p->rig->camera(0).fx()));
 #ifdef MVSLAM_HAVE_OPENCV
   if (cfg.sensor == SensorMode::Stereo) p->mapper_logic->setDepthSource(std::make_unique<frontend::cv_impl::KltStereoMatcher>(cfg.frontend, *p->rig));
   p->mapper_logic->setDescriptorExtractor(std::make_unique<frontend::cv_impl::OrbDescriptorExtractor>());

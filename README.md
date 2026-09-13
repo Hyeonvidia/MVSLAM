@@ -31,6 +31,8 @@ scripts/docker.sh run configs/euroc_stereo_imu.yaml EuRoC/MH01 docker-release /r
 scripts/docker.sh eval EuRoC/MH01 /results/MH01_traj.txt            # ATE(SE3; mono는 --sim3)
 scripts/docker.sh kitti configs/kitti_stereo.yaml 00 docker-release /results/kitti_00.txt --execution offline
 scripts/docker.sh eval-kitti 00 /results/kitti_00.txt
+scripts/docker.sh tum configs/tum_rgbd_fr1.yaml TUM_RGBD/rgbd_dataset_freiburg1_desk docker-release /results/fr1_desk.txt --execution offline
+scripts/docker.sh eval-tum TUM_RGBD/rgbd_dataset_freiburg1_desk /results/fr1_desk.txt
 scripts/docker.sh tsan           # ThreadSanitizer 빌드/테스트
 scripts/docker.sh shell          # 컨테이너 셸
 ```
@@ -51,7 +53,7 @@ scripts/docker.sh shell          # 컨테이너 셸
 | 맵 저장 → 로드 → 저장 | 바이트 동일 (21 MB, 535 KF / 15.6k MP) |
 | 무상태 재측위 `System::localize` (20프레임마다 146회) | 146회 성공, 5 cm/3° 안 99.3%, 위치 중앙 오차 4.6 mm |
 | 로드 맵 재측위 후 연속 추적 (프레임 1000부터) | ATE 0.050 m |
-| TUM fr1_desk RGB-D | 데이터셋 미보유 — `--tum` 로더·`eval-tum` 준비됨 |
+| TUM fr1_desk RGB-D (30 Hz 핸드헬드) | **ATE 0.030 m** (게이트 ≤ 0.05), 추적 상실 없음, 3.5 ms/frame |
 
 러너 옵션: 입력 `--euroc <mav0>` / `--kitti <sequences/NN> [--kitti-calib calib.txt]`(P0/P1로 rig 자동 설정) / `--tum <rgbd dir>`; `--out`, `--execution offline|realtime`, `--max-frames N`, `--start-frame N`, `--status-every N`, `--overlay-dir DIR [--overlay-every N]`(트랙 오버레이 PNG), `--log-level debug`; 맵 `--save-map map.mvs`, `--load-map map.mvs`, `--localize-arm 1`(로드 맵에 재측위 후 추적 계속), `--localize-every N --localize-out loc.txt [--no-track 1]`(무상태 재측위 평가 → `scripts/docker.sh eval-loc`); 뷰어 `--rerun out.rrd | rerun+http://host.docker.internal:9876/proxy [--rerun-image-every N]`.
 

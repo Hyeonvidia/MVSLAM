@@ -11,6 +11,8 @@ rig:
       distortion: [-0.28340811, 0.07395907, 0.00019359, 1.76187114e-05]
       fps: 20
 frontend: {clahe: true, detector_cell_px: 35, kf_min_parallax_px: 20.0}
-backend: {solver: ceres, lba_max_keyframes: 20, solver_threads: 1}
-loop: {enable: true, recognizer: incremental   # none | incremental (HBST, no vocabulary) | dbow (P3)
+backend: {solver: ceres, lba_max_keyframes: 20, solver_threads: 1, kf_culling: true}   # mono: culling ON (MH01 Sim3 ATE 0.23 -> 0.14 m); stereo keeps it OFF (ADR-0009)
+loop:
+  enable: true
+  recognizer: incremental   # none | incremental (HBST, no vocabulary) | dbow (P3)
 map: {multi_map: true}

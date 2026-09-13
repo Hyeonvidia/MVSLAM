@@ -9,11 +9,11 @@ import rerun.blueprint as rrb
 
 bp = rrb.Blueprint(
     rrb.Horizontal(
-        rrb.Spatial3DView(name="맵 · 파랑 프러스텀=키프레임 · 회색=맵 포인트 · 빨강=궤적 · 큰 프러스텀=현재 카메라", origin="/world", contents="/world/**"),
+        rrb.Spatial3DView(name="Map | blue frustums = keyframes, grey = map points, red = trajectory, large frustum = current camera", origin="/world", contents="/world/**"),
         rrb.Vertical(
-            rrb.Spatial2DView(name="카메라0 · 초록=3D 트랙(맵 포인트) · 노랑=2D 트랙(삼각측량 대기) · 꼬리=KLT 이동(10프레임)", origin="/world/cam/image", contents="/world/cam/image/**"),
-            rrb.TimeSeriesView(name="프론트엔드 track() ms · 3D 트랙 수 · 백엔드 mapper/LBA ms(KF당 평균)", origin="/stats", contents="/stats/**"),
-            rrb.TextLogView(name="이벤트 (frontend / mapper / optimizer)", origin="/events", contents="/events/**"),
+            rrb.Spatial2DView(name="Camera 0 | green = 3-D tracks (map points), yellow = new 2-D tracks (awaiting triangulation), tails = KLT motion (10 frames)", origin="/world/cam/image", contents="/world/cam/image/**"),
+            rrb.TimeSeriesView(name="Timing | frontend track() ms, 3-D tracks, backend mapper / LBA ms per keyframe (avg)", origin="/stats", contents="/stats/**"),
+            rrb.TextLogView(name="Events | frontend / mapper / optimizer", origin="/events", contents="/events/**"),
             row_shares=[3, 2, 2],
         ),
         column_shares=[3, 1],

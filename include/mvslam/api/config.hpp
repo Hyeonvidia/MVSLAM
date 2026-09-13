@@ -56,6 +56,8 @@ struct FrontendConfig {
   int reloc_max_attempts = 30;                              // MapService::localize(): frames tried before reporting failure
   int reloc_detector_cell_px = 20;                          // denser corners on the query image than for tracking (LOST-time only)
   int reloc_max_hamming = 60;                               // query corners are fresh detections, keyframe corners were KLT-tracked (~1 px drift)
+  int reloc_ransac_iters = 1000;                            // P3P-RANSAC for relocalization (low inlier ratios after motion blur)
+  int reloc_min_lost_frames = 5;                            // consecutive failed frames before relocalizing (KLT usually recovers a single bad frame by itself)
   int init_min_features = 100;          // stereo/rgbd: features required in the first keyframe; mono: matches
   int min_3d_for_ok = 15;               // 3-D tracks needed to leave Initializing / declare tracking ok
   int reinit_after_frames = 10;         // Initializing frames without 3-D tracks before restarting bootstrap
