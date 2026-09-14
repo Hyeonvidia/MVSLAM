@@ -41,8 +41,8 @@ classDiagram
 | 동작 | 규칙 |
 |---|---|
 | `startNewMap()` | 프론트엔드 LOST && 현재 맵 KF > 10. 현재 맵은 `stored`, 새 맵 `active`; id 공간은 계속 증가 |
-| 병합 | Loop 워커가 stored 맵 KF를 후보로 검증 성공 시: `merge(current → stored)` — **현재 맵이 죽고 stored 맵이 살며 id 승계**(ORB). 관성은 rigid 스냅 + 국소 BA, 시각은 welding BA + essential graph([03-backend.md](03-backend.md) §5) |
-| bad map | `merge` 후 원 맵은 tombstone → 참조 epoch 만료 시 해제(ORB `RemoveBadMaps` delete 주석 처리의 반대) |
+| 병합 | Loop 워커가 stored 맵 KF를 후보로 검증 성공 시: `merge(current → stored)` — **현재 맵이 죽고 stored 맵이 살며 id 승계**(ORB). 관성은 rigid 스냅 + 국소 BA, 시각은 welding BA + essential graph([03-backend.md](03-backend.md) §5). **P3 구현**: 활성 맵을 `S_cq`로 스냅(IMU 초기화된 쪽 좌표계 우선) → `Map::absorb` → 융합 → weld BA(시각 LBA); essential graph PGO는 같은 맵 루프에서만 |
+| bad map | `merge` 후 원 맵 객체는 비워진 채 `MapStore::activate`에서 폐기(shared_ptr 보유자가 있으면 그때까지 생존); `recordMerge(from→into)`로 옛 id 참조(HBST 항목, 프레임 기록)는 `resolveMap`으로 승계. 요소 tombstone은 `Map::reclaim`(Mapper가 256 epoch 지난 것을 회수) |
 | KFDB | **하나**, 모든 맵 KF 포함(loop·merge·reloc 후보를 한 질의로). reloc은 active 맵 한정이 아니라 전 맵(개선) |
 | IMU 상태 | 맵별 `imuState{initialized, ba1, ba2, scale, R_wg}` — 새 맵은 처음부터 초기화, 병합 시 성숙한 쪽 승계 |
 

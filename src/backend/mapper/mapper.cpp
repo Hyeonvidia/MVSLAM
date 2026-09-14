@@ -175,6 +175,9 @@ core::KeyframeId Mapper::process(frontend::KeyframeRequest req, std::stop_token 
       if (lm.matched > 0) m.updateCovisibility(kf->id(), cfg_.backend.lba_min_covisibility);
     }
     cullRecentMapPoints(m, kf->id());
+    // Tombstones of removed / fused elements: readers never keep references across write transactions,
+    // a generous epoch margin keeps long sessions from growing monotonically.
+    if (m.changeEpoch() > 256) m.reclaim(m.changeEpoch() - 256);
     return 0;
   });
   stats_.local_matches += lm.matched;

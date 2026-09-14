@@ -21,11 +21,18 @@ VisualFrontend::VisualFrontend(FrontendConfig cfg, SensorMode sensor, bool inert
     preint_kf_ = std::make_unique<sensors::imu::Preintegrator>(rig_.imu());
     preint_frame_ = std::make_unique<sensors::imu::Preintegrator>(rig_.imu());
     imu_predictor_ = dynamic_cast<ImuPredictor*>(c_.predictor.get());
-    // The IMU initializer rescales/rotates the map on the optimizer worker; the frontend re-anchors on the next frame.
-    map_events_ = maps_.events().subscribe([this](const MapEvent& e) {
-      if (const auto* ie = std::get_if<ImuInitializedEvent>(&e)) { std::lock_guard<std::mutex> lk(transform_mu_); pending_scale_ = ie->scale; }
-    });
   }
+  // Backend workers move the map under the frontend (IMU initialization rescales/rotates it, loop closing
+  // corrects keyframes, merges transform whole maps): re-anchor on the next frame.
+  map_events_ = maps_.events().subscribe([this](const MapEvent& e) {
+    std::lock_guard<std::mutex> lk(transform_mu_);
+    auto request = [&](double scale, const char* reason) {
+      if (pending_transform_) pending_transform_->scale *= scale; else pending_transform_ = PendingTransform{scale, reason};
+    };
+    if (const auto* ie = std::get_if<ImuInitializedEvent>(&e)) request(ie->scale, "IMU initialization");
+    else if (const auto* pc = std::get_if<PosesCorrectedEvent>(&e)) request(pc->scale, "loop correction");
+    else if (std::get_if<MapMergedEvent>(&e)) request(1.0, "map merge");
+  });
 }
 
 VisualFrontend::~VisualFrontend() = default;
@@ -81,16 +88,18 @@ void VisualFrontend::resetImuFromKeyframe(const Frame& kf_frame) {
   preint_frame_->reset(kf_frame.bias);
 }
 
-// ImuInitializedEvent: keyframes, points and velocities were rescaled/rotated. Re-anchor the frontend
+// Keyframes, points and velocities were transformed on a backend worker (IMU initialization, loop
+// correction, map merge). Re-anchor the frontend
 // state on the (moved) reference keyframe and force a robust re-seed on this frame.
 void VisualFrontend::applyMapTransform(Frame& cur) {
-  double scale = 1.0;
+  PendingTransform pt;
   {
     std::lock_guard<std::mutex> lk(transform_mu_);
-    if (!pending_scale_) return;
-    scale = *pending_scale_;
-    pending_scale_.reset();
+    if (!pending_transform_) return;
+    pt = *pending_transform_;
+    pending_transform_.reset();
   }
+  const double scale = pt.scale;
   bool found = false;
   maps_.active()->withReadLock([&](const map::Map& m) {
     auto kf = m.keyframe(last_kf_id_);
@@ -111,10 +120,13 @@ void VisualFrontend::applyMapTransform(Frame& cur) {
   cur.bias = last_.bias;
   p3p_required_ = true;
   transformed_since_last_ = true;
+  last_.T_kb = T_kb;
   if (c_.predictor) c_.predictor->reset();
-  preint_kf_->reintegrate(last_kf_frame_.bias);   // same measurements since the keyframe, new linearization bias
-  preint_frame_->reintegrate(last_.bias);
-  MVSLAM_INFO("frontend: map rescaled by {:.3f} (IMU initialization), re-anchored on keyframe {}", scale, last_kf_id_.value);
+  if (inertial_ && preint_kf_ && preint_frame_) {
+    preint_kf_->reintegrate(last_kf_frame_.bias);   // same measurements since the keyframe, new linearization bias
+    preint_frame_->reintegrate(last_.bias);
+  }
+  MVSLAM_INFO("frontend: map transformed ({}, scale {:.3f}), re-anchored on keyframe {}", pt.reason, scale, last_kf_id_.value);
 }
 
 int VisualFrontend::countOccupiedCells(const Frame& f) const {

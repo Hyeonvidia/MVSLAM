@@ -68,3 +68,21 @@ TEST(HbstPlaceRecognizer, IgnoresZeroDescriptorsAndEmptyIndex) {
   pr.add(KeyframeId{1}, MapId{1}, std::vector<std::uint8_t>(32, 0), 32);  // all-zero row is skipped
   EXPECT_EQ(pr.numDescriptors(), 0u);
 }
+
+// Loop detection queries with the query keyframe (and its covisibles) in the index: excluded keyframes must
+// not shadow the older keyframe holding the same descriptors.
+TEST(HbstPlaceRecognizer, ExcludedKeyframesDoNotShadowOlderMatches) {
+  std::mt19937 rng(5);
+  mvslam::map::HbstPlaceRecognizer pr;
+  const auto d = randomDescriptors(rng, 300);
+  pr.add(KeyframeId{1}, MapId{1}, d, 32);
+  const auto q = perturb(d, 0.05, rng);
+  pr.add(KeyframeId{2}, MapId{1}, q, 32);   // the query keyframe itself (exact copy: always the closest item)
+  const auto shadowed = pr.query(q, 32, {}, 5);
+  ASSERT_FALSE(shadowed.empty());
+  EXPECT_EQ(shadowed.front().keyframe, KeyframeId{2});
+  const auto loop = pr.query(q, 32, {KeyframeId{2}}, 5);
+  ASSERT_FALSE(loop.empty());
+  EXPECT_EQ(loop.front().keyframe, KeyframeId{1});
+  EXPECT_GT(loop.front().score, 0.5);
+}

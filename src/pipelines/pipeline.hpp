@@ -7,6 +7,7 @@
 #include "backend/imu/imu_initializer.hpp"
 #include "backend/local_ba/inertial_bundle_adjuster.hpp"
 #include "backend/local_ba/local_bundle_adjuster.hpp"
+#include "backend/loop/loop_closer.hpp"
 #include "backend/mapper/keyframe_culler.hpp"
 #include "backend/mapper/mapper.hpp"
 #include "backend/solvers/solver.hpp"
@@ -33,6 +34,11 @@ struct Pipeline {
   std::unique_ptr<backend::InertialBundleAdjuster> inertial_lba;      // inertial configurations
   std::unique_ptr<backend::imu::ImuInitializer> imu_init;
   std::unique_ptr<backend::KeyframeCuller> culler;
+  std::unique_ptr<frontend::IRobustPoseSolver> loop_p3p;          // loop worker's own solvers (thread separation)
+  std::unique_ptr<frontend::IPoseOptimizer> loop_pose_optimizer;
+  std::unique_ptr<backend::LocalBundleAdjuster> weld_ba;
+  std::unique_ptr<backend::loop::LoopDetector> loop_detector;
+  std::unique_ptr<backend::loop::LoopCloser> loop_closer;
   std::unique_ptr<core::Worker<MapperJob>> mapper;
   std::unique_ptr<core::Worker<OptimizerJob>> optimizer;
   std::unique_ptr<core::Worker<LoopJob>> loop;          // null in odometry-only configurations

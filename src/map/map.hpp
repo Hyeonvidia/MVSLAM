@@ -43,6 +43,20 @@ class Map {
   // Rigid rotation + scale of the whole map (IMU initialization): T_wb <- [R_gw R | s R_gw t], v <- s R_gw v,
   // X <- s R_gw X, culled records likewise. Afterwards gravity points along -z (ORB-SLAM3 ApplyScaledRotation).
   void applyScaledRotation(double s, const core::SO3& R_gw);
+  // Similarity transform of the whole map (loop / merge alignment): T_wb <- [R_S R | S t], v <- s R_S v,
+  // X <- S X, culled records likewise. applyTransform(SE3) is the rigid special case.
+  void applyTransform(const core::Sim3& S);
+  void applyTransform(const core::SE3& T) { applyTransform(core::Sim3(Sophus::RxSO3d(1.0, T.so3()), T.translation())); }
+  // Bumped by loop corrections / merges (inside the write lock): optimizers snapshot it and discard their
+  // write-back when it changed underneath them (their poses would undo the correction).
+  std::uint64_t correctionEpoch() const { return correction_epoch_.load(std::memory_order_acquire); }
+  void bumpCorrectionEpoch() { correction_epoch_.fetch_add(1, std::memory_order_acq_rel); }
+  // Fuses `remove` into `keep`: observations move (keyframes already observing `keep` keep theirs), the
+  // track alias remove -> keep is recorded, `remove` is tombstoned.
+  void mergeMapPoints(core::MapPointId keep, core::MapPointId remove);
+  // Moves every keyframe, map point, covisibility edge, alias and culled record of `other` into this map
+  // (ids are global, no renaming). `other` is left empty. Origins of `other` are appended.
+  void absorb(Map& other);
 
   // ---- queries (inside either lock) --------------------------------------------------------
   std::shared_ptr<KeyFrame> keyframe(core::KeyframeId id) const;
@@ -97,6 +111,7 @@ class Map {
   core::MapId id_;
   mutable std::shared_mutex mu_;
   std::atomic<std::uint64_t> epoch_{0};
+  std::atomic<std::uint64_t> correction_epoch_{0};
   std::unordered_map<core::KeyframeId, std::shared_ptr<KeyFrame>> keyframes_;
   std::unordered_map<core::MapPointId, std::shared_ptr<MapPoint>> map_points_;
   std::vector<std::shared_ptr<KeyFrame>> kf_tombstones_;

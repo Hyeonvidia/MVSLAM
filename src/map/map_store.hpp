@@ -3,6 +3,7 @@
 // event bus shared by all maps. docs/design/04-map.md §3.
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 #include <vector>
 
 #include "core/ids.hpp"
@@ -57,6 +58,14 @@ class MapStore {
     }
     return active_ && active_->id() == id;
   }
+  // Loop closing merged `from` into `into` (the `from` map is empty and dropped); ids recorded against the
+  // merged map (place recognizer entries, frame records) resolve to the surviving map.
+  void recordMerge(core::MapId from, core::MapId into) { std::lock_guard<std::mutex> lk(mu_); merged_into_[from] = into; }
+  core::MapId resolveMap(core::MapId id) const {
+    std::lock_guard<std::mutex> lk(mu_);
+    for (int hop = 0; hop < 64; ++hop) { auto it = merged_into_.find(id); if (it == merged_into_.end()) break; id = it->second; }
+    return id;
+  }
   core::IdGenerator<core::MapId>& mapIds() { return map_ids_; }
   const core::IdGenerator<core::KeyframeId>& keyframeIds() const { return kf_ids_; }
   const core::IdGenerator<core::MapPointId>& mapPointIds() const { return mp_ids_; }
@@ -78,6 +87,7 @@ class MapStore {
   core::IdGenerator<core::TrackId> track_ids_;
   std::shared_ptr<MapEventBus> bus_;
   std::unique_ptr<IPlaceRecognizer> recognizer_;
+  std::unordered_map<core::MapId, core::MapId> merged_into_;
 };
 
 }  // namespace mvslam::map

@@ -92,6 +92,21 @@ struct LoopConfig {
   std::string vocabulary_path;
   int min_matches = 15, min_inliers = 30; double loose_ba_threshold = 0.02;
   bool global_ba = false; int pgo_iters = 20;
+  // Detection (docs/design/03-backend.md §5): recognizer candidates verified per keyframe, exclusion gap
+  // (keyframe ids), descriptor gate, projection search radius, votes (query itself + covisible keyframes
+  // seeing the candidate's points + consecutive keyframes), cooldown after a closure, inertial gate.
+  int max_candidates = 3;
+  int min_keyframe_gap = 20;
+  int max_hamming = 60;
+  double match_radius_px = 8.0;
+  int min_votes = 3;
+  int vote_keyframes = 5;
+  int vote_min_matches = 20;
+  int cooldown_keyframes = 10;
+  double inertial_max_roll_pitch_rad = 0.02;
+  // Correction: essential-graph covisibility weight, visual local BA around the query after the correction.
+  int strong_covisibility = 100;
+  bool weld_ba = true;
 };
 
 struct MapConfig {

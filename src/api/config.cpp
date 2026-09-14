@@ -111,6 +111,17 @@ Config parse(const YAML::Node& root) {
   L.loose_ba_threshold = get<double>(l, "loose_ba_threshold", L.loose_ba_threshold);
   L.global_ba = get<bool>(l, "global_ba", L.global_ba);
   L.pgo_iters = get<int>(l, "pgo_iters", L.pgo_iters);
+  L.max_candidates = get<int>(l, "max_candidates", L.max_candidates);
+  L.min_keyframe_gap = get<int>(l, "min_keyframe_gap", L.min_keyframe_gap);
+  L.max_hamming = get<int>(l, "max_hamming", L.max_hamming);
+  L.match_radius_px = get<double>(l, "match_radius_px", L.match_radius_px);
+  L.min_votes = get<int>(l, "min_votes", L.min_votes);
+  L.vote_keyframes = get<int>(l, "vote_keyframes", L.vote_keyframes);
+  L.vote_min_matches = get<int>(l, "vote_min_matches", L.vote_min_matches);
+  L.cooldown_keyframes = get<int>(l, "cooldown_keyframes", L.cooldown_keyframes);
+  L.inertial_max_roll_pitch_rad = get<double>(l, "inertial_max_roll_pitch_rad", L.inertial_max_roll_pitch_rad);
+  L.strong_covisibility = get<int>(l, "strong_covisibility", L.strong_covisibility);
+  L.weld_ba = get<bool>(l, "weld_ba", L.weld_ba);
   const auto m = root["map"];
   auto& M = c.map;
   M.multi_map = get<bool>(m, "multi_map", M.multi_map);
@@ -192,7 +203,10 @@ std::string Config::toYaml() const {
       << YAML::Key << "lba_max_keyframes" << YAML::Value << backend.lba_max_keyframes
       << YAML::Key << "inertial_window" << YAML::Value << backend.inertial_window
       << YAML::Key << "solver_threads" << YAML::Value << backend.solver_threads << YAML::EndMap;
-  out << YAML::Key << "loop" << YAML::Value << YAML::BeginMap << YAML::Key << "enable" << YAML::Value << loop.enable << YAML::EndMap;
+  out << YAML::Key << "loop" << YAML::Value << YAML::BeginMap << YAML::Key << "enable" << YAML::Value << loop.enable
+      << YAML::Key << "recognizer" << YAML::Value << (loop.recognizer == PlaceRecognizerType::DBoW ? "dbow" : loop.recognizer == PlaceRecognizerType::Incremental ? "incremental" : "none")
+      << YAML::Key << "min_inliers" << YAML::Value << loop.min_inliers << YAML::Key << "min_votes" << YAML::Value << loop.min_votes
+      << YAML::Key << "pgo_iters" << YAML::Value << loop.pgo_iters << YAML::EndMap;
   out << YAML::Key << "map" << YAML::Value << YAML::BeginMap << YAML::Key << "multi_map" << YAML::Value << map.multi_map << YAML::EndMap;
   out << YAML::EndMap;
   return out.c_str();

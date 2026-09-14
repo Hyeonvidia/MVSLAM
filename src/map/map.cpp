@@ -126,6 +126,67 @@ void Map::applyScaledRotation(double s, const core::SO3& R_gw) {
   }
 }
 
+void Map::applyTransform(const core::Sim3& S) {
+  const double s = S.scale();
+  const core::SO3 R = S.rxso3().so3();
+  auto pose = [&](const core::SE3& T) { return core::SE3(R * T.so3(), S * T.translation()); };
+  for (auto& [_, kf] : keyframes_) {
+    kf->setT_wb(pose(kf->T_wb()));
+    kf->setVelocity(s * (R * kf->velocity()));
+  }
+  for (auto& [_, mp] : map_points_) mp->setPosition(S * mp->position());
+  for (auto& [_, rec] : culled_) {
+    rec.T_wc_at_cull = pose(rec.T_wc_at_cull);
+    rec.T_rc = core::SE3(rec.T_rc.so3(), s * rec.T_rc.translation());
+  }
+}
+
+void Map::mergeMapPoints(core::MapPointId keep, core::MapPointId remove) {
+  if (keep == remove) return;
+  auto k = mapPoint(keep);
+  auto r = mapPoint(remove);
+  if (!k || !r) return;
+  const auto obs = r->observations();  // copy: removeObservation mutates
+  for (const auto& [kfid, slot] : obs) {
+    auto kf = keyframe(kfid);
+    if (!kf) continue;
+    if (k->observations().count(kfid)) {  // keyframe already observes `keep`: drop the duplicate slot
+      auto& slots = kf->mapPointSlots();
+      if (slot.keypoint_index >= 0 && static_cast<std::size_t>(slot.keypoint_index) < slots.size()) slots[static_cast<std::size_t>(slot.keypoint_index)] = core::MapPointId{};
+      continue;
+    }
+    k->addObservation(kfid, slot);
+    auto& slots = kf->mapPointSlots();
+    if (slot.keypoint_index >= 0 && static_cast<std::size_t>(slot.keypoint_index) < slots.size()) {
+      slots[static_cast<std::size_t>(slot.keypoint_index)] = keep;
+      kf->keypoints()[static_cast<std::size_t>(slot.keypoint_index)].track = core::TrackId{keep.value};
+    }
+  }
+  r->markBad(changeEpoch());
+  mp_tombstones_.push_back(r);
+  map_points_.erase(remove);
+  addTrackAlias(core::TrackId{remove.value}, keep);
+}
+
+void Map::absorb(Map& other) {
+  for (auto& [id, kf] : other.keyframes_) keyframes_[id] = kf;
+  for (auto& [id, mp] : other.map_points_) map_points_[id] = mp;
+  for (const auto& [a, nb] : other.cov_.adjacency()) for (const auto& [b, w] : nb) cov_.setWeight(a, b, w);
+  for (const auto& [t, mp] : other.track_aliases_) track_aliases_[t] = mp;
+  for (const auto& [k, rec] : other.culled_) culled_[k] = rec;
+  for (const auto& [t, obs] : other.pending2d_) pending2d_[t] = obs;
+  origins_.insert(origins_.end(), other.origins_.begin(), other.origins_.end());
+  if (!other.imu_state_.initialized && imu_state_.initialized) {}  // keep the mature inertial state of this map
+  else if (other.imu_state_.initialized && !imu_state_.initialized) imu_state_ = other.imu_state_;
+  other.keyframes_.clear();
+  other.map_points_.clear();
+  other.cov_ = CovisibilityGraph{};
+  other.track_aliases_.clear();
+  other.culled_.clear();
+  other.pending2d_.clear();
+  other.origins_.clear();
+}
+
 std::shared_ptr<KeyFrame> Map::keyframe(core::KeyframeId id) const {
   auto it = keyframes_.find(id);
   return it == keyframes_.end() ? nullptr : it->second;

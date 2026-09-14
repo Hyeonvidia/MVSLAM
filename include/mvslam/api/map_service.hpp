@@ -22,7 +22,7 @@ struct KeyframeInsertedEvent { std::uint64_t map_id, keyframe_id; Timestamp time
 struct KeyframeRemovedEvent { std::uint64_t map_id, keyframe_id; };
 struct MapPointsUpdatedEvent { std::uint64_t map_id; std::uint64_t epoch; };
 struct PoseCorrection { std::uint64_t keyframe_id; Pose T_wb_old, T_wb_new; };
-struct PosesCorrectedEvent { std::uint64_t map_id; std::vector<PoseCorrection> corrections; };
+struct PosesCorrectedEvent { std::uint64_t map_id; std::vector<PoseCorrection> corrections; double scale = 1.0; };  // scale != 1: monocular similarity correction of the query window
 struct MapMergedEvent { std::uint64_t from_map, into_map; };
 struct MapResetEvent { std::uint64_t map_id; };
 struct LoopClosedEvent { std::uint64_t map_id, keyframe_a, keyframe_b; };

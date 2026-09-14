@@ -53,7 +53,8 @@ std::optional<RelocalizationResult> Relocalizer::relocalize(const ImageState& im
 
   for (const auto& cand : candidates) {
     std::shared_ptr<map::Map> map;
-    for (const auto& m : maps) if (m->id() == cand.map) map = m;
+    const auto cand_map = maps_.resolveMap(cand.map);  // keyframes of merged maps live in the surviving map
+    for (const auto& m : maps) if (m->id() == cand_map) map = m;
     if (!map) continue;
     // Local map of the candidate: its points plus those of its strongest covisible keyframes.
     std::vector<LocalPoint> local;
@@ -153,7 +154,7 @@ std::optional<RelocalizationResult> Relocalizer::relocalize(const ImageState& im
 
     RelocalizationResult r;
     r.T_wb = f.T_wb;
-    r.map = cand.map;
+    r.map = cand_map;
     r.keyframe = cand.keyframe;
     r.T_wk = T_wk;
     r.inliers = po.inliers;

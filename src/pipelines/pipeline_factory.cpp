@@ -120,6 +120,17 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
     p->imu_init = std::make_unique<backend::imu::ImuInitializer>(cfg, *p->rig, p->solver);
   }
   p->culler = std::make_unique<backend::KeyframeCuller>(cfg, p->rig.get());
+#ifdef MVSLAM_HAVE_OPENCV
+  if (cfg.loop.enable && cfg.loop.recognizer != PlaceRecognizerType::None) {
+    FrontendConfig lcfg = fcfg;
+    lcfg.ransac_iters = fcfg.reloc_ransac_iters;
+    p->loop_p3p = std::make_unique<frontend::cv_impl::P3pRansacSolver>(lcfg, *p->rig);
+    p->loop_pose_optimizer = std::make_unique<backend::MotionOnlyBa>(*p->rig, p->solver, lcfg, cfg.backend);
+    p->weld_ba = std::make_unique<backend::LocalBundleAdjuster>(cfg, *p->rig, p->solver);
+    p->loop_detector = std::make_unique<backend::loop::LoopDetector>(cfg, *p->rig, *p->maps, *p->loop_p3p, *p->loop_pose_optimizer);
+    p->loop_closer = std::make_unique<backend::loop::LoopCloser>(cfg, *p->rig, *p->maps, p->solver, p->weld_ba.get());
+  }
+#endif
 
   const auto policy = cfg.execution == ExecutionMode::Offline ? core::ExecutionPolicy::Sync : core::ExecutionPolicy::Async;
   Pipeline* raw = p.get();
@@ -180,9 +191,12 @@ std::unique_ptr<Pipeline> PipelineFactory::build(const Config& cfg) {
         if (raw->loop) raw->loop->submit(LoopJob{kf});
       },
       [](const MapperJob& dropped, MapperJob& incoming) { incoming.dropped.push_back(dropped.request.kf_id); });
-  if (cfg.loop.enable || cfg.map.multi_map) {
+  if (p->loop_detector) {
     p->loop = std::make_unique<core::Worker<LoopJob>>("loop", policy, [raw](LoopJob job, std::stop_token st) {
-      (void)job; (void)st; (void)raw;  // place recognition / correction: P3
+      const auto h = raw->loop_detector->detect(job.keyframe);
+      if (!h) return;
+      const auto rep = raw->loop_closer->close(*h, st);
+      if (rep.closed || rep.merged) raw->loop_detector->closed(job.keyframe);
     });
   }
   MVSLAM_INFO("pipeline: sensor={} inertial={} execution={} solver={} cameras={} frontend={}",

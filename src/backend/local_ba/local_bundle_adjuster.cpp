@@ -32,7 +32,9 @@ LocalBundleAdjuster::Report LocalBundleAdjuster::run(map::Map& map, core::Keyfra
   std::unordered_map<core::MapPointId, core::Vec3> points;
   std::vector<ObsRef> obs;
   std::vector<std::pair<core::KeyframeId, int>> outliers;  // pre-flagged (depth <= 0) + chi2 outliers after solving
+  std::uint64_t correction_epoch = 0;
   map.withReadLock([&](const map::Map& m) {
+    correction_epoch = m.correctionEpoch();
     window = selector_->select(m, latest);
     std::set<core::KeyframeId> in_window(window.optimized.begin(), window.optimized.end());
     std::set<core::KeyframeId> in_fixed(window.fixed.begin(), window.fixed.end());
@@ -114,7 +116,9 @@ LocalBundleAdjuster::Report LocalBundleAdjuster::run(map::Map& map, core::Keyfra
   rep.outliers = static_cast<int>(outliers.size());
 
   // ---- 4. write-back ---------------------------------------------------------------------------
+  bool stale = false;
   map.withWriteLock([&](map::Map& m) {
+    if (m.correctionEpoch() != correction_epoch) { stale = true; return 0; }  // loop correction / merge underneath: discard
     for (auto k : window.optimized) if (auto kf = m.keyframe(k)) if (!kf->bad()) kf->setT_wb(problem.variable(poseVar(k)).pose);
     for (const auto& [id, _] : points) if (auto mp = m.mapPoint(id)) if (!mp->bad()) mp->setPosition(problem.variable(pointVar(id)).vec);
     for (const auto& [k, slot] : outliers) {
@@ -130,7 +134,8 @@ LocalBundleAdjuster::Report LocalBundleAdjuster::run(map::Map& map, core::Keyfra
     }
     return 0;
   });
-  rep.applied = true;
+  rep.applied = !stale;
+  if (stale) MVSLAM_WARN("lba: map corrected during optimization, result discarded");
   rep.time_s = r1.time_s;
   last_ = rep;
   MVSLAM_DEBUG("lba: kfs={} pts={} obs={} outliers={} chi2 {:.1f}->{:.1f} {}", rep.keyframes, rep.points, rep.observations, rep.outliers,

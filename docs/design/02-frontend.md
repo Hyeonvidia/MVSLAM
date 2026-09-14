@@ -97,6 +97,7 @@ pose ← IPoseOptimizer.optimize(pose, 3D 관측)   // MotionOnlyBa: Huber √5.
 - 두 누산기 유지: `preint_kf_`(마지막 KF부터, KF 요청에 스냅샷으로 실림)·`preint_frame_`(직전 프레임부터, 예측용). `System::track`이 프레임 시각까지의 IMU 샘플을 넘기고 프론트엔드가 프레임 경계에서 선형보간한 중점값으로 두 누산기에 같은 구간을 적분한다(마지막 샘플 이후는 상수 유지). `T_bi ≠ I`면 측정을 body로 회전.
 - 예측(`ImuPredictor`): IMU 초기화 전에는 gyro 자세(bias 0의 ΔR) + 등속 병진, 초기화 후에는 직전 프레임 상태(pose·속도·bias)에서 `R_j = R_i ΔR(b)`, `v_j = v_i + g Δt + R_i ΔV(b)`, `p_j = p_i + v_i Δt + ½ g Δt² + R_i ΔP(b)`(중력 −z). 앵커 KF의 상태는 매 프레임 맵에서 다시 읽는다(LBA가 KF를 움직이므로 프론트엔드 사본은 오래된 값).
 - IMU 초기화 이벤트(`ImuInitializedEvent`): 맵이 회전·스케일된 뒤 첫 프레임에서 참조 KF의 새 pose로 재앵커(`T_kb` 병진에 scale), P3P 재시드 강제, 누산기는 측정을 보존한 채 새 bias로 재적분(리셋하면 KF→프레임 구간이 사라져 추적이 끊긴다 — P2 실측).
+- 루프 보정·맵 병합(`PosesCorrectedEvent`·`MapMergedEvent`, P3)도 같은 경로로 재앵커한다(`PendingTransform{scale, reason}`, 시각 전용 구성도 구독). 병합 뒤 활성 맵이 바뀌어도 참조 KF id는 살아남은 맵에 그대로 있으므로 `maps.active()`에서 찾는다; 융합으로 이름이 바뀐 점은 트랙 alias(`refreshTracksFromMap`)로 따라간다.
 - 프레임 pose 출력은 항상 `T_wb`; 카메라 pose는 rig로 파생. 카메라 단절 실측(MH01 t=42.5 s, 5 s 검은 프레임): IMU dead reckoning으로 5 s 유지 후 같은 맵에 재측위, 단절 구간 제외 ATE 0.036 m(단절 끝 예측 오차 ~2 m); IMU 없으면 3 s 후 새 맵.
 
 ## 3. 프레임 출력과 궤적

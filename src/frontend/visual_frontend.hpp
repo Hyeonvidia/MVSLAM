@@ -3,9 +3,9 @@
 // steps are injected strategies; this class owns sequencing, the bootstrap phases and the state
 // machine. Runs on the caller thread; reads the map under its read lock only.
 #include <memory>
-
 #include <mutex>
 #include <optional>
+#include <string>
 
 #include "frontend/imu_predictor.hpp"
 #include "frontend/interfaces.hpp"
@@ -96,7 +96,8 @@ class VisualFrontend {
   InertialAnchor anchor_;
   std::shared_ptr<const sensors::imu::Preintegration> preint_frame_snapshot_;
   std::mutex transform_mu_;
-  std::optional<double> pending_scale_;      // ImuInitializedEvent: the map was rescaled/rotated
+  struct PendingTransform { double scale = 1.0; std::string reason; };
+  std::optional<PendingTransform> pending_transform_;   // map rescaled / corrected / merged on a backend worker: re-anchor next frame
   Subscription map_events_;
   std::optional<Result<Pose>> reloc_outcome_;
 };

@@ -90,15 +90,18 @@ std::vector<PlaceCandidate> HbstPlaceRecognizer::query(const std::vector<std::ui
     ++used;
     const Node* cur = root_.get();
     while (cur->bit >= 0) cur = cur->child[bitOf(q, cur->bit) ? 1 : 0].get();
+    // Best admissible item of the leaf: erased and excluded keyframes (the query's own neighbourhood for loop
+    // detection) do not take part, otherwise the query keyframe's own descriptors would always win.
     int best = opt_.max_hamming + 1;
     std::uint32_t best_item = 0;
     for (auto i : cur->items) {
+      const auto kf = entries_[i].kf;
+      if (erased_.count(kf) || excluded.count(kf)) continue;
       const int d = hamming(q, descs_[i]);
       if (d < best) { best = d; best_item = i; }
     }
     if (best > opt_.max_hamming) continue;
     const auto& e = entries_[best_item];
-    if (erased_.count(e.kf) || excluded.count(e.kf)) continue;
     ++votes[e.kf];
     maps[e.kf] = e.map;
   }

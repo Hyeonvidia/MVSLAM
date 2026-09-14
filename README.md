@@ -45,7 +45,7 @@ scripts/docker.sh shell          # 컨테이너 셸
 |---|---|---|---|---|
 | EuRoC MH01 | stereo | **0.032 m** (SE3) | 3.4 ms/frame | 게이트 ≤ 0.06 m 달성, 2회 실행 궤적 SHA 동일 |
 | EuRoC MH01 | mono | 0.142 m (Sim3, scale 3.70) | 2.7 ms/frame | 두 시점 H/E 초기화, 루프 클로징 없음 |
-| KITTI 00 | stereo | 4.99 m (SE3, 3.7 km) | 4.9 ms/frame | 루프 클로징 없음(P3) |
+| KITTI 00 | stereo | 4.99 m (SE3, 3.7 km) | 4.9 ms/frame | 루프 클로징 없음(P3 후 1.04 m) |
 
 ## P1 결과 (EuRoC V1_01 stereo, Offline, 2026-09-14)
 | 항목 | 결과 |
@@ -63,6 +63,17 @@ scripts/docker.sh shell          # 컨테이너 셸
 | stereo-inertial (`configs/euroc_stereo_imu.yaml`) | **0.048 m** (게이트 ≤ 0.05) | 2.1 s | 2회 실행 궤적 동일 |
 | mono-inertial (`configs/euroc_mono_imu.yaml`) | **0.048 m** (게이트 ≤ 0.08, metric) | 2.0 s, scale 3.87 | 시각 전용 mono는 Sim3 0.142 m |
 | 5 s 카메라 단절 (`--blackout 42.5:5`) | 단절 제외 0.036 m | — | IMU dead reckoning 후 같은 맵에 재측위; IMU 없이는 새 맵 |
+
+## P3 결과 (루프 클로징·다중 맵, Offline `--execution offline`, 2026-09-14)
+| 시퀀스 | 구성 | 루프 없음 | **루프 클로징** | 비고 |
+|---|---|---|---|---|
+| KITTI 00 (3.7 km) | stereo | 5.68 m (현재 코드; P0 시점 4.99 m) | **1.04 m** (게이트 ≤ 1.5) | 루프 20회, 2:40 wall, 3.8 ms/frame |
+| EuRoC MH05 | stereo-inertial | 0.142 m | **0.078 m** | 관성 게이트 통과, SE3 PGO + 사슬 간선; 2회 실행 궤적 SHA 동일 |
+| EuRoC MH05 | stereo | 0.232 m | **0.103 m** | |
+| EuRoC MH01 | mono (Sim3 평가) | 0.142 m | **0.106 m** | 창 Sim3 보정(scale 0.93~1.00) + SE3 PGO |
+| EuRoC MH01, 5 s 카메라 단절, IMU 없음 | stereo | 새 맵 분리 | **병합** | 새 맵 3 KF 뒤 old 맵으로 병합, 단절 제외 ATE 0.028 m; Realtime 모드에서도 병합(0.039 m, 겹친 LBA write-back 5회 폐기) |
+
+설계 대비 편차(ADR-0013): PGO는 SE3 한 종류(Sim3/Yaw-4DoF는 보류), loose BA/GBA 대신 질의 주변 weld BA, HBST 잎 탐색에서 제외 KF 건너뛰기. 설정 키는 `loop:`(`max_candidates`, `min_keyframe_gap`, `max_hamming`, `match_radius_px`, `min_votes`, `vote_keyframes`, `vote_min_matches`, `cooldown_keyframes`, `inertial_max_roll_pitch_rad`, `strong_covisibility`, `weld_ba`, `pgo_iters`). 메모리: KITTI 00 RSS 루프 254 MB vs 루프 없음 247 MB(최종, 74k MP/1579 KF), 20 s 간격 곡선 동일 — 루프 클로징에 의한 추가 증가 없음.
 
 ## 뷰어 (Rerun)
 코어는 뷰어를 모른다. `src/platform/viz/rerun_sink`가 공개 API(이벤트·스냅샷)만으로 기록한다([ADR-0011](docs/adr/0011-rerun-viewer.md)): 3D 맵(파랑 프러스텀 = 키프레임, 회색 = 맵 포인트, 빨강 = 궤적, 큰 프러스텀 = 현재 카메라), 카메라 영상 위 KLT 트랙(초록 = 맵 포인트를 가진 3-D 트랙, 노랑 = 삼각측량을 기다리는 새 2-D 트랙, 꼬리 = 최근 10프레임 이동), 프론트엔드 `track()` ms·3-D 트랙 수·백엔드 mapper/LBA ms 시계열, 이벤트 로그(키프레임 요청/삽입, LBA 적용, 상태 전이). 레이아웃은 `viz/mvslam.rbl`(app id `mvslam`용 블루프린트, `viz/make_blueprint.py`로 생성).

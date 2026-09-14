@@ -31,7 +31,7 @@ struct Config {
   RigConfig rig;                // cameras[], T_bc, IMU calib(noise, walk, rate), body frame 정의
   FrontendConfig frontend;      // 02-frontend §4 표
   BackendConfig backend;        // 03-backend §6 표 (윈도우, 반복, 시간 상한)
-  LoopConfig loop;              // enable, recognizer type, vocab path, thresholds
+  LoopConfig loop;              // enable, recognizer, min_matches/min_inliers, max_candidates, min_keyframe_gap, max_hamming, match_radius_px, min_votes/vote_keyframes/vote_min_matches, cooldown_keyframes, inertial_max_roll_pitch_rad, strong_covisibility, weld_ba, pgo_iters (03-backend §5.1)
   MapConfig map;                // multi-map, culling, memory caps, load/save path
   LoggingConfig logging;        // level, sink
   static Config fromYaml(const std::string& path);   // 파싱 + validate(), 실패 시 ConfigError throw
@@ -73,7 +73,7 @@ class MapService {
   void load(std::string path, std::function<void(Result<MapSummary>)> cb);
   void localize(std::optional<Pose> prior, std::function<void(Result<Pose>)> cb);  // 다음 track() 프레임들에서 전 맵 재측위를 시도(무장); 성공 시 그 맵으로 전환·추적 계속, 콜백 1회 (frontend.reloc_max_attempts 프레임 후 실패 보고). prior는 예약
   MapSnapshot snapshot() const;   // 뷰어/도구용 복사본: KF pose·타임스탬프, MP xyz (read lock 아래 O(크기))
-  Subscription subscribe(EventHandler h);      // MapEvent variant(KeyframeInserted, PosesCorrected, …), 해제는 RAII
+  Subscription subscribe(EventHandler h);      // MapEvent variant(KeyframeInserted, PosesCorrected{corrections, scale}, LoopClosed, MapMerged, …), 해제는 RAII
   MapSummary summary() const;                  // 맵 수, KF/MP 수, 활성 맵 id
 };
 ```

@@ -118,6 +118,15 @@ struct RerunSink::Impl {
       if (++lba_updates % 10 == 0) rec.log("events", rerun::TextLog("optimizer: local BA applied (map epoch " + std::to_string(mu->epoch) + ")").with_level(rerun::TextLogLevel::Debug));
     } else if (const auto* kr = std::get_if<KeyframeRemovedEvent>(&e)) {
       rec.log("world/kf/" + std::to_string(kr->keyframe_id), rerun::Clear::FLAT);
+    } else if (const auto* pc = std::get_if<PosesCorrectedEvent>(&e)) {
+      for (const auto& c : pc->corrections) logKeyframe(c.keyframe_id, c.T_wb_new);
+      rec.log("events", rerun::TextLog("loop closing: " + std::to_string(pc->corrections.size()) + " keyframe poses corrected").with_level(rerun::TextLogLevel::Info));
+      logPoints();
+    } else if (const auto* lc = std::get_if<LoopClosedEvent>(&e)) {
+      rec.log("events", rerun::TextLog("loop closed: keyframe " + std::to_string(lc->keyframe_a) + " -> keyframe " + std::to_string(lc->keyframe_b)).with_level(rerun::TextLogLevel::Warning));
+    } else if (const auto* mm = std::get_if<MapMergedEvent>(&e)) {
+      rec.log("events", rerun::TextLog("map " + std::to_string(mm->from_map) + " merged into map " + std::to_string(mm->into_map)).with_level(rerun::TextLogLevel::Warning));
+      logPoints();
     } else if (std::get_if<MapResetEvent>(&e)) {
       rec.log("world/kf", rerun::Clear::RECURSIVE);
       rec.log("world/points", rerun::Clear::FLAT);

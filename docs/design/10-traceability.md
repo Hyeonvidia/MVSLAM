@@ -25,6 +25,10 @@
 | 루프 검증 5단 ∪ 공간 3표 + 관성 게이트 | `분석/02` §3.4, `분석/01` §4, `분석/00` "[DIFF] place recognition 공간 검증은 3표" |
 | 보정 Sim3/SE3/4DoF, PGO essential graph, loose BA, GBA 지연 적용 | `분석/01` §4, `분석/02` §3.4, `분석/00` "[MISSING] OptimizeEssentialGraph4DoF" |
 | 병합 이원화(rigid snap vs welding), 현재 맵이 죽고 old 맵 생존 | `분석/01` §4(MergeLocal/MergeLocal2) |
+| P3 구현: HBST 잎 탐색에서 제외 KF 건너뛰기 | 루프 질의는 질의 KF 자신이 색인에 있어 최근접 항목이 항상 제외 대상 — 표를 버리지 않고 다음 항목을 본다(설계 03 §5.1, 단위 테스트) |
+| P3 구현: PGO는 SE3, mono는 창만 Sim3, 관성은 게이트+사슬 간선 | ORB `OptimizeEssentialGraph(Sim3)`/`4DoF`를 뒤로 미룸([ADR-0013](../adr/0013-loop-closing-se3-pgo-weld-ba.md)); KITTI·EuRoC 게이트는 stereo(-inertial)로 측정 |
+| P3 구현: weld BA(질의 주변 시각 LBA)로 loose BA·GBA 대체 | OV²SLAM looseBA(전역 5회)·ORB GBA 대신 융합된 covisibility가 두 구간을 잇는 국소 BA; `loop.global_ba` 예약 |
+| P3 구현: 병합 좌표계는 IMU 초기화된 쪽 | 중력 정렬(−z) 유지 — 관성 LBA·예측이 고정 중력 벡터를 쓰므로 정렬 안 된 좌표계로 옮기면 깨진다 |
 | 단일 KFDB(전 맵), 재측위 전 맵 대상 | `분석/01` §4·§5(ORB reloc active 맵 한정 — 개선) |
 | id 기반 참조 + tombstone/epoch | ORB_SLAM3_Modern OWNERSHIP.md(shared_ptr 이행 경험), VIGIL 원칙 "epoch 기반 회수" |
 | 이벤트(`PosesCorrected` 등) | `분석/07` §7.1(보정 이벤트 부재가 dense mapping의 장애) |

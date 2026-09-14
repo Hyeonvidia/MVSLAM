@@ -8,7 +8,7 @@
 | 호출 스레드 | 사용자 | `pushImu`, `track`(프론트엔드 전체), `trajectory` | `FrameInput`, `ImuSample` | `TrackResult`, `KeyframeRequest` 큐 push |
 | `MapperWorker` | `System` 생성 시(Realtime) | KF 측정 추출·깊이·삼각측량·로컬맵 매칭 → `Map` write-back | `LatestQueue<KeyframeRequest>` | `LatestQueue<KeyframeId>`(Optimizer) |
 | `OptimizerWorker` | 〃 | IMU 초기화 단계, LBA, MP/KF culling | `LatestQueue<KeyframeId>` | `LatestQueue<KeyframeId>`(Loop), `optimizer_busy` atomic |
-| `LoopWorker` | 〃(`loop.enable` 또는 multi_map) | place recognition, 검증, 보정, PGO, loose BA, GBA, 병합, **커맨드**(save/load/localize) | `LatestQueue<KeyframeId>` + `CommandQueue` | `PosesCorrected` 이벤트 |
+| `LoopWorker` | 〃(`loop.enable && recognizer != none`) | place recognition, 검증, 보정, PGO, weld BA, 병합(P3; 전용 P3P·MotionOnlyBa·LBA 인스턴스), **커맨드**(save/load/localize) | `LatestQueue<KeyframeId>` + `CommandQueue` | `PosesCorrected`·`LoopClosed`·`MapMerged` 이벤트 |
 | (없음) | — | 임시 스레드·detach 금지. GBA도 LoopWorker 안에서 `StopToken`으로 중단 가능한 작업 | | |
 
 `std::jthread` + `std::stop_token`으로 생명주기를 관리한다. `System::~System`은 `request_stop()` → 큐 깨우기 → join. 폴링 sleep 없음: 큐는 `condition_variable_any`로 대기(`stop_token` 연동).
@@ -33,7 +33,7 @@
 1. **프레임**: `track()`은 프론트엔드 처리를 동기 수행(수 ms)하고 백엔드는 큐에 넘긴다. 입력이 처리보다 빠르면 **호출자**가 프레임을 버린다(`apps/`의 `FrameDropper`가 예시; 코어는 큐를 두지 않아 지연이 쌓이지 않는다).
 2. **KF**: `LatestQueue`로 최신만 처리, 버린 KF의 covisibility는 합류.
 3. **BA**: 시간 상한(0.2 s) + 선점. Offline에서는 상한 비활성(결정성).
-4. **보정 지연**: PGO/GBA 결과는 KF에 적용되고 프레임 궤적은 `T_wk·T_kb`로 자동 갱신. `TrackResult.pose`는 최신 추정이므로 루프 보정 시 **점프**한다(cuVSLAM 계약) — 부드러운 궤적은 `trajectory()`.
+4. **보정 지연**: PGO/GBA 결과는 KF에 적용되고 프레임 궤적은 `T_wk·T_kb`로 자동 갱신. `TrackResult.pose`는 최신 추정이므로 루프 보정 시 **점프**한다(cuVSLAM 계약) — 부드러운 궤적은 `trajectory()`. 보정은 write lock 안에서 `Map::correctionEpoch`을 올리고, LBA(시각·관성)는 스냅샷 때의 epoch과 다르면 write-back을 버린다(보정 전 pose로 계산한 결과가 보정을 되돌리는 것을 막음). Offline(Sync)에서는 mapper → LBA → loop가 프론트엔드 스레드에서 순서대로 실행되므로 겹침이 없다.
 5. **retention window**: 보정 결과가 현재 시각보다 `retention_s`(기본 5 s) 이상 오래된 상태를 대상으로 하면 로그만 남기고 폐기하지 않는다 — 맵 보정은 항상 유효. 대신 **로컬맵 스냅샷 epoch**가 오래되면 프론트엔드가 다음 프레임에서 재스냅샷.
 
 ## 5. Offline 모드 (결정성)

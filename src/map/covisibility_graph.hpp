@@ -17,6 +17,7 @@ class CovisibilityGraph {
   // Neighbours with weight >= min_weight, sorted by decreasing weight.
   std::vector<std::pair<core::KeyframeId, int>> covisibles(core::KeyframeId kf, int min_weight = 1) const;
   const std::map<core::KeyframeId, int>& neighbours(core::KeyframeId kf) const;
+  const std::unordered_map<core::KeyframeId, std::map<core::KeyframeId, int>>& adjacency() const { return adj_; }
 
  private:
   std::unordered_map<core::KeyframeId, std::map<core::KeyframeId, int>> adj_;

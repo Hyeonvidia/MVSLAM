@@ -84,18 +84,25 @@ ImuInitStep ImuInitializer::step(map::Map& map, core::KeyframeId latest_kf) {
   ImuInitStep st;
   st.before = state_;
   const auto info = map.withReadLock([&](const map::Map& m) {
-    struct { int n = 0; double span = 0; std::int64_t t_first = 0, t_latest = 0; bool initialized = false; std::int64_t t_init = 0; int refinements = 0; } r;
+    struct { int n = 0; double span = 0; std::int64_t t_first = 0, t_latest = 0; bool initialized = false, refined1 = false, refined2 = false; std::int64_t t_init = 0; int refinements = 0; } r;
     const auto kfs = m.keyframes();
     r.n = static_cast<int>(kfs.size());
     if (!kfs.empty()) { r.t_first = kfs.front()->timestamp(); r.t_latest = kfs.back()->timestamp(); r.span = static_cast<double>(r.t_latest - r.t_first) * 1e-9; }
     if (auto kf = m.keyframe(latest_kf)) r.t_latest = kf->timestamp();
     r.initialized = m.imuState().initialized;
+    r.refined1 = m.imuState().refined1;
+    r.refined2 = m.imuState().refined2;
     r.t_init = m.imuState().t_init;
     r.refinements = m.imuState().scale_refinements;
     return r;
   });
   if (!info.initialized && state_ != ImuInitState::Uninitialized) { state_ = ImuInitState::Uninitialized; st.before = state_; }  // new map
   const bool mono = cfg_.sensor == SensorMode::Mono;
+  if (info.initialized && state_ == ImuInitState::Uninitialized) {  // merged into an initialized map: resume its stage
+    state_ = !info.refined1 ? ImuInitState::Initialized : !info.refined2 ? ImuInitState::Refine1 : (mono && info.refinements < 3) ? ImuInitState::Refine2 : ImuInitState::Done;
+    st.before = state_;
+    MVSLAM_INFO("imu initializer: active map already initialized (merge), resuming at stage {}", static_cast<int>(state_));
+  }
   const auto& b = cfg_.backend;
   const double since_init = info.initialized ? static_cast<double>(info.t_latest - info.t_init) * 1e-9 : 0.0;
   switch (state_) {

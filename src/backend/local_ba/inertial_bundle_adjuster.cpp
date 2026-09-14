@@ -36,7 +36,9 @@ InertialBundleAdjuster::Report InertialBundleAdjuster::run(map::Map& map, const 
   std::unordered_map<core::MapPointId, core::Vec3> points;
   std::vector<ObsRef> obs;
   std::vector<std::pair<core::KeyframeId, int>> outliers;
+  std::uint64_t correction_epoch = 0;
   map.withReadLock([&](const map::Map& m) {
+    correction_epoch = m.correctionEpoch();
     std::set<core::KeyframeId> in_window(window.begin(), window.end());
     auto first = m.keyframe(window.front());
     if (first && first->prevKf().valid()) {
@@ -166,7 +168,9 @@ InertialBundleAdjuster::Report InertialBundleAdjuster::run(map::Map& map, const 
   }
   MVSLAM_DEBUG("inertial lba residuals: imu chi2/factor {:.1f} (9 dof), bias-rw chi2/factor {:.1f} (6 dof)", n_imu ? imu_chi2 / n_imu : 0.0, n_rw ? rw_chi2 / n_rw : 0.0);
   // ---- 4. write-back -------------------------------------------------------------------------------
+  bool stale = false;
   map.withWriteLock([&](map::Map& m) {
+    if (m.correctionEpoch() != correction_epoch) { stale = true; return 0; }  // loop correction / merge underneath: discard
     for (std::size_t i = first_free; i < chain.size(); ++i) {
       auto kf = m.keyframe(chain[i].id);
       if (!kf || kf->bad()) continue;
@@ -188,7 +192,8 @@ InertialBundleAdjuster::Report InertialBundleAdjuster::run(map::Map& map, const 
     }
     return 0;
   });
-  rep.applied = true;
+  rep.applied = !stale;
+  if (stale) MVSLAM_WARN("inertial lba: map corrected during optimization, result discarded");
   last_ = rep;
   MVSLAM_DEBUG("inertial lba: kfs={} imu={} pts={} obs={} outliers={} cost {:.1f}->{:.1f}{}", rep.keyframes, rep.imu_factors, rep.points,
                rep.observations, rep.outliers, rep.initial_cost, rep.final_cost, rep.preempted ? " (preempted)" : "");
