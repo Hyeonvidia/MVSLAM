@@ -55,7 +55,14 @@ scripts/docker.sh shell          # 컨테이너 셸
 | 로드 맵 재측위 후 연속 추적 (프레임 1000부터) | ATE 0.050 m |
 | TUM fr1_desk RGB-D (30 Hz 핸드헬드) | **ATE 0.030 m** (게이트 ≤ 0.05), 추적 상실 없음, 3.5 ms/frame |
 
-러너 옵션: 입력 `--euroc <mav0>` / `--kitti <sequences/NN> [--kitti-calib calib.txt]`(P0/P1로 rig 자동 설정) / `--tum <rgbd dir>`; `--out`, `--execution offline|realtime`, `--max-frames N`, `--start-frame N`, `--status-every N`, `--overlay-dir DIR [--overlay-every N]`(트랙 오버레이 PNG), `--log-level debug`; 맵 `--save-map map.mvs`, `--load-map map.mvs`, `--localize-arm 1`(로드 맵에 재측위 후 추적 계속), `--localize-every N --localize-out loc.txt [--no-track 1]`(무상태 재측위 평가 → `scripts/docker.sh eval-loc`); 뷰어 `--rerun out.rrd | rerun+http://host.docker.internal:9876/proxy [--rerun-image-every N]`.
+러너 옵션: 입력 `--euroc <mav0>`(IMU는 `imu0/data.csv`, `inertial: imu`일 때) / `--kitti <sequences/NN> [--kitti-calib calib.txt]`(P0/P1로 rig 자동 설정) / `--tum <rgbd dir>`; `--blackout START:DURATION`(카메라 단절 시험: 검은 프레임, IMU 유지); 평가 `scripts/evaluate_ate.py --segments N`(구간별 RMSE) `--exclude START:END`; `--out`, `--execution offline|realtime`, `--max-frames N`, `--start-frame N`, `--status-every N`, `--overlay-dir DIR [--overlay-every N]`(트랙 오버레이 PNG), `--log-level debug`; 맵 `--save-map map.mvs`, `--load-map map.mvs`, `--localize-arm 1`(로드 맵에 재측위 후 추적 계속), `--localize-every N --localize-out loc.txt [--no-track 1]`(무상태 재측위 평가 → `scripts/docker.sh eval-loc`); 뷰어 `--rerun out.rrd | rerun+http://host.docker.internal:9876/proxy [--rerun-image-every N]`.
+
+## P2 결과 (EuRoC MH01, Offline, 2026-09-14)
+| 구성 | ATE RMSE (SE3) | 초기화 | 비고 |
+|---|---|---|---|
+| stereo-inertial (`configs/euroc_stereo_imu.yaml`) | **0.048 m** (게이트 ≤ 0.05) | 2.1 s | 2회 실행 궤적 동일 |
+| mono-inertial (`configs/euroc_mono_imu.yaml`) | **0.048 m** (게이트 ≤ 0.08, metric) | 2.0 s, scale 3.87 | 시각 전용 mono는 Sim3 0.142 m |
+| 5 s 카메라 단절 (`--blackout 42.5:5`) | 단절 제외 0.036 m | — | IMU dead reckoning 후 같은 맵에 재측위; IMU 없이는 새 맵 |
 
 ## 뷰어 (Rerun)
 코어는 뷰어를 모른다. `src/platform/viz/rerun_sink`가 공개 API(이벤트·스냅샷)만으로 기록한다([ADR-0011](docs/adr/0011-rerun-viewer.md)): 3D 맵(파랑 프러스텀 = 키프레임, 회색 = 맵 포인트, 빨강 = 궤적, 큰 프러스텀 = 현재 카메라), 카메라 영상 위 KLT 트랙(초록 = 맵 포인트를 가진 3-D 트랙, 노랑 = 삼각측량을 기다리는 새 2-D 트랙, 꼬리 = 최근 10프레임 이동), 프론트엔드 `track()` ms·3-D 트랙 수·백엔드 mapper/LBA ms 시계열, 이벤트 로그(키프레임 요청/삽입, LBA 적용, 상태 전이). 레이아웃은 `viz/mvslam.rbl`(app id `mvslam`용 블루프린트, `viz/make_blueprint.py`로 생성).

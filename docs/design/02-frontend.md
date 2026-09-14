@@ -54,7 +54,8 @@ pose ← IPoseOptimizer.optimize(pose, 3D 관측)   // MotionOnlyBa: Huber √5.
                                                  // prior에서 depth ≤ 0인 트랙은 문제에 넣지 않고 outlier 처리(Ceres는 초기 평가 실패 시 전체를 중단)
 실패(NaN/inlier<15) → 같은 프레임에서 P3P 재시드 후 1회 재최적화; 그래도 실패 → 예측 pose 유지, p3p_required=true → 다음 프레임; 연속 실패 → RECENTLY_LOST
 ```
-관성 모드: `PoseInertialOptimizer`가 15-D 상태(`T_wb, v, b`)를 시각 관측 + IMU factor + **직전 프레임 prior**(15×15, 백엔드 `Marginalizer`가 생성)로 풀고, 맵 갱신 직후 프레임은 마지막 KF 고정(ORB CASE A/B, `분석/01` §2.4). IMU 초기화 완료 후에는 등속 모델을 쓰지 않는다.
+관성 모드(설계): `PoseInertialOptimizer`가 15-D 상태(`T_wb, v, b`)를 시각 관측 + IMU factor + **직전 프레임 prior**(15×15, 백엔드 `Marginalizer`가 생성)로 풀고, 맵 갱신 직후 프레임은 마지막 KF 고정(ORB CASE A/B, `분석/01` §2.4).
+**P2 구현·실측**: 두 경우 모두 구현(`backend/pose_inertial_optimizer`; CASE B의 prior는 dense 30×30 정규방정식의 Schur 보완으로 승계)했지만 MH01 stereo-inertial에서 A 0.060 m·B 0.070 m vs **시각 MotionOnlyBa + IMU 예측 0.048 m**라 기본값은 OFF(`frontend.inertial_pose_optimization`, [ADR-0012](../adr/0012-frame-inertial-optimization-off.md)). 관성 모드의 프레임 pose는 IMU 예측을 초기값으로 한 시각 최적화이고, 실패하면 **dead reckoning**(IMU 예측 pose를 그대로 출력, 속도·bias 유지)으로 `recently_lost_inertial_s`(5 s)까지 버틴다. 그동안 `reloc_min_lost_frames` 뒤부터 매 프레임 활성 맵 재측위를 시도하고, 한계에 닿아 새 맵을 시작하기 직전에 마지막으로 한 번 더 재측위한다.
 
 ### 2.5 상태기계 (`TrackingStateMachine`, State 패턴)
 | 상태 | 전이 | 근거 |
@@ -93,9 +94,10 @@ pose ← IPoseOptimizer.optimize(pose, 3D 관측)   // MotionOnlyBa: Huber √5.
 | 관성(공통) | 시각 초기화 후 `ImuInitializer` 상태기계(백엔드)가 scale/gravity/bias 사후 추정; 초기화 전 KF 4 Hz 강제, 가속도 변화 ≥ 0.5 m/s² 요구(stereo-I) | [03-backend.md](03-backend.md) §5 |
 
 ### 2.9 IMU 예측 (`ImuPredictor`)
-- 두 누산기 유지: `preint_from_last_kf`(최적화용)·`preint_from_last_frame`(예측용). 경계 샘플 선형보간.
-- 앵커 규칙: 맵 갱신 epoch가 바뀐 프레임은 **마지막 KF 앵커**, 아니면 **직전 프레임 앵커**(ORB `PredictStateIMU`). bias는 앵커의 bias, Δ는 1차 Jacobian 보정.
-- 프레임 pose 출력은 항상 `T_wb`; 카메라 pose는 rig로 파생.
+- 두 누산기 유지: `preint_kf_`(마지막 KF부터, KF 요청에 스냅샷으로 실림)·`preint_frame_`(직전 프레임부터, 예측용). `System::track`이 프레임 시각까지의 IMU 샘플을 넘기고 프론트엔드가 프레임 경계에서 선형보간한 중점값으로 두 누산기에 같은 구간을 적분한다(마지막 샘플 이후는 상수 유지). `T_bi ≠ I`면 측정을 body로 회전.
+- 예측(`ImuPredictor`): IMU 초기화 전에는 gyro 자세(bias 0의 ΔR) + 등속 병진, 초기화 후에는 직전 프레임 상태(pose·속도·bias)에서 `R_j = R_i ΔR(b)`, `v_j = v_i + g Δt + R_i ΔV(b)`, `p_j = p_i + v_i Δt + ½ g Δt² + R_i ΔP(b)`(중력 −z). 앵커 KF의 상태는 매 프레임 맵에서 다시 읽는다(LBA가 KF를 움직이므로 프론트엔드 사본은 오래된 값).
+- IMU 초기화 이벤트(`ImuInitializedEvent`): 맵이 회전·스케일된 뒤 첫 프레임에서 참조 KF의 새 pose로 재앵커(`T_kb` 병진에 scale), P3P 재시드 강제, 누산기는 측정을 보존한 채 새 bias로 재적분(리셋하면 KF→프레임 구간이 사라져 추적이 끊긴다 — P2 실측).
+- 프레임 pose 출력은 항상 `T_wb`; 카메라 pose는 rig로 파생. 카메라 단절 실측(MH01 t=42.5 s, 5 s 검은 프레임): IMU dead reckoning으로 5 s 유지 후 같은 맵에 재측위, 단절 구간 제외 ATE 0.036 m(단절 끝 예측 오차 ~2 m); IMU 없으면 3 s 후 새 맵.
 
 ## 3. 프레임 출력과 궤적
 - `Frame`은 참조 KF 기준 상대 pose `T_kb`(ORB `mTcp`, OV²SLAM logger)를 함께 저장한다. PGO/GBA로 KF가 보정되면 프레임 궤적은 `T_wk·T_kb`로 자동 갱신된다 — `System::trajectory()`가 이를 재구성한다. 참조 KF가 culling으로 사라졌으면 `Map::resolvePose`가 culled 기록(참조 KF 기준 상대 pose 체인, [04-map.md](04-map.md) §1)을 따라 살아 있는 KF까지 거슬러 올라간다; 어느 맵에도 들어가지 못한 참조(드롭된 Mapper 작업)는 추적 시점 절대 pose로 대체.
@@ -118,6 +120,7 @@ pose ← IPoseOptimizer.optimize(pose, 3D 관측)   // MotionOnlyBa: Huber √5.
 | `init_min_features / min_3d_for_ok / reinit_after_frames` | 100 / 15 / 10 | P0 |
 | `mono_init_min_parallax_px / mono_init_median_depth` | 20 / 1.0 | ORB |
 | `recently_lost_inertial_s / recently_lost_visual_s / new_map_min_keyframes` | 5 / 3 / 10 | ORB |
+| `inertial_pose_optimization` | false | ADR-0012 (MH01 실측) |
 | `reloc_min_inliers / reloc_max_attempts / reloc_detector_cell_px / reloc_max_hamming / reloc_ransac_iters / reloc_min_lost_frames` | 20 / 30 / 20 / 60 / 1000 / 5 (한 프레임 실패는 다음 프레임 P3P 재시드로 회복되므로 즉시 재측위하면 트랙이 줄어 정확도가 떨어짐 — MH01 mono 0.14 → 0.23 m) | P1 V101·fr1 튜닝 (P3P-RANSAC 100회로는 블러 후 재측위 후보의 낮은 inlier 비율에서 실패) |
 
 ## 5. 테스트

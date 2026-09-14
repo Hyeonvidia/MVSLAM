@@ -101,6 +101,14 @@ stateDiagram-v2
   - 성공 시 `Map::applyScaledRotation(s, R_wg)`(전 KF pose·속도·MP 일괄) → `Map::changeEpoch++` → VI-BA(공유 bias, 100 iter) → spanning tree로 미최적화 KF 전파.
 - `PoseInertialOptimizer`(프론트엔드 `IPoseOptimizer` 구현): 15-D 프레임 상태 + 시각 pose-only factor + `ImuFactor` + `BiasRandomWalkFactor` + 직전 프레임 `PriorFactor`(또는 마지막 KF 고정), GN 4×10 회차별 outlier 재분류, 종료 시 `Marginalizer`로 다음 프레임 prior 생성(KF 승격 시 prior 폐기 — ORB `mpcpi` 누수 없음: `unique_ptr`).
 
+### 4.1 P2 구현 상태 (2026-09-14)
+- **배치 편차**: `Preintegration`/`Preintegrator`는 `src/sensors/imu/`에 있다(맵 계층이 KF마다 preintegration을 소유해야 하는데 map은 backend에 의존할 수 없음). `backend/imu/preintegrator.hpp`는 별칭만 둔다. 이산화는 ORB 그대로(측정 잡음 σ²·f, RW σ²/f), 프론트엔드가 프레임 경계에서 선형보간한 구간 중점값을 넣는다. 단위 테스트: 해석 궤적 대비 ΔR/ΔV/ΔP, bias Jacobian 5종 vs 재적분 수치미분, 공분산 PSD, merge = 단일 적분.
+- **Factor**: `ImuFactor`(9), `ImuScaleGravityFactor`(9, +GravityDir 2-DoF·LogScale), `BiasRandomWalkFactor`(6), `BiasPriorFactor`(6). 우측 곱 pose [ρ, φ] 규약의 해석 Jacobian 전부 수치미분과 1e-5 이내(`test_imu_factors`). 정보행렬 = 공분산 고유값 하한 후 역행렬의 Cholesky.
+- **초기화기** (`ImuInitializer::step`, optimizer 워커가 KF마다 호출): KF ≥ 10 && span ≥ 1 s(stereo)/2 s(mono) → `inertialOnlyOptimization`(pose 고정, 속도·공유 bias·R_wg·log-scale; 초기 속도 = 위치차/Δt, 초기 중력 = −ΣR·ΔV) → `Map::applyScaledRotation(s, R_gw)` → 전 KF VI-BA(bias prior 부착) → `Initialized`; t>5 s Refine1(prior 1/1e5), t>15 s Refine2(0/0), mono는 25/35/45 s scale refinement(gravity+scale만). scale 분산은 dense H의 marginal로 계산해 로그·판정 보조로만 쓴다(ORB 시간 스케줄이 1차 판정). 새 맵이면 상태기계를 되돌린다. MH01 실측: stereo 2.1 s / mono 2.0 s(scale 3.87 — 시각 전용 Sim3 scale 3.70과 일치)에 초기화.
+- **관성 LBA** (`InertialBundleAdjuster`): prevKf 사슬 창(기본 10, KF의 3-D 트랙 > 100(stereo)/75(mono)면 25 — ORB `bLarge`), 창 직전 KF는 pose·속도·bias 고정 경계, **경계 IMU 엣지는 정보 ×1e-2 + Huber √16.92**(ORB `LocalInertialBA`; 없으면 MH01 0.127 → 있으면 0.060 m), Refine2 전에는 모든 IMU 엣지 Huber. 창 밖 관측 KF는 고정 pose(≤ `inertial_max_fixed_visual`). 실측 잔차: IMU χ²/factor ≈ 5–10(9 DoF), RW ≈ 1–3(6 DoF) → 모델과 시각 기하가 일치.
+- **KF culling과 IMU**: 제거 KF의 preintegration을 후속 KF에 `mergePrevious`로 합치고, 병합 후 간격이 3 s(Refine2 후)/0.5 s를 넘으면 제거하지 않는다. 그래도 mono-inertial은 culling OFF가 낫다(0.048 vs 0.061 m) → `euroc_mono_imu.yaml`은 OFF.
+- **프레임 pose-inertial 최적화**: CASE A(마지막 KF 고정 + KF→프레임 IMU factor)와 CASE B(직전 프레임 변수 + marginalization prior + 프레임→프레임 IMU factor, 프레임 정보는 dense 30×30 Schur로 다음 prior에 승계) 둘 다 구현했으나 **기본 OFF**([ADR-0012](../adr/0012-frame-inertial-optimization-off.md)): MH01 stereo-inertial ATE가 A 0.060 m, B 0.070 m인데 시각 MotionOnlyBa + IMU 예측은 0.048 m. IMU는 예측·dead reckoning·백엔드에서 쓰인다.
+
 ## 5. 루프 클로징 (`src/backend/loop/`)
 | 단계 | 설계 | 근거 |
 |---|---|---|

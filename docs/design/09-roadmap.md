@@ -7,7 +7,7 @@
 | **P-skel (완료, 본 세션)** | 설계 문서 11편, 저장소·서브모듈 11종 태그 고정, CMake/프리셋/CI/Docker, 공개 API, core/sensors/map/backend graph·Ceres 어댑터·marginalizer·motion-only BA, frontend 인터페이스·상태기계·KF 정책·KLT/격자 검출(OpenCV), 단위 테스트 | `cmake --preset macos-release` configure·build 통과, 단위 테스트 전부 통과 |
 | **P0 — mono/stereo VO(Ceres) (완료, 2026-09-14)** | `MonoTwoViewInitializer`(H/E 병렬, 5-pt USAC), `DepthInitializer`, E-RANSAC 필터, `KltStereoMatcher`, 프론트엔드 KF 시점 격자 검출, Mapper(기술·temporal 삼각측량·`LocalMapMatcher`+트랙 alias·MP culling), `CovisibilityWindow` LBA + 선점/시간 상한/robust 발산 가드/depth 사전 필터, `KeyframeCuller`(구현·**기본 OFF**, ADR-0009) + culled pose 체인, `trajectory()` KF 상대 궤적, 데이터셋 러너(EuRoC·KITTI odometry, calib 자동 반영) + `evaluate_ate.py`(EuRoC/KITTI GT, SE3/Sim3) | **달성**: MH01 stereo Offline ATE **0.032 m**(게이트 ≤ 0.06), 프론트엔드 **3.4 ms/frame**(도커·M4), 2회 실행 궤적 SHA 동일. 부가 실측: MH01 mono Sim3 ATE 0.142 m(scale 3.7, 루프 없음), KITTI 00 stereo ATE 4.99 m(3.7 km, 루프 클로징 없음; P3 게이트 1.5 m는 루프 후 목표) |
 | **P1 — RGB-D, 재측위, 맵 저장/로드 (완료 2026-09-14)** | `DepthImageSource` + TUM RGB-D 러너(`--tum`), `Relocalizer`(격자 코너+ORB → `HbstPlaceRecognizer` 온라인 후보(어휘 파일 없음, ADR-0010) → 매칭 → P3P → BA → 투영 확장), cereal PortableBinary 직렬화(id 카운터·IMU 상태·alias·culled 기록), `MapService::load/save/localize/snapshot`, `System::localize`, KannalaBrandt8(단위 테스트), Rerun 뷰어 어댑터(ADR-0011) | **달성**: 저장→로드→재측위 V101 146/146 재측위, 5 cm/3° 안 145회(**99.3%**), 로드 맵 연속 추적 ATE 0.050 m; 라운드트립 **바이트 동일**(단위 테스트 + 21 MB 실맵). TUM fr1_desk RGB-D ATE **0.030 m**(게이트 ≤ 0.05; 595/596 포즈, 추적 상실 없음) — 깊이를 가상 우측 관측 u_r = u − f·b/z로 BA에 넣어(ORB-SLAM2) 0.080 → 0.030 m, fr1의 빠른 핸드헬드 움직임에는 KLT 창 21 px·4레벨·fb 1.5 px 프리셋 필요(기본 9 px·3레벨은 프레임당 트랙 절반을 잃고 붕괴) |
-| **P2 — IMU** | `Preintegrator`, `ImuFactor`(Jacobian 테스트), `ImuPredictor`, `PoseInertialOptimizer`(prior via `Marginalizer`), `ImuInitializer` 상태기계(staged prior + scale 분산), `TemporalWindow` 관성 LBA, stereo/rgbd scale 고정 | EuRoC MH01 stereo-inertial ATE ≤ 0.05 m(ORB 실측 0.041 m), mono-inertial ≤ 0.08 m; 초기화 시간 ≤ 15 s; 관성 상실 연명 5 s 테스트 |
+| **P2 — IMU (완료 2026-09-14)** | `Preintegrator`(sensors/imu, ORB 이산화, 재적분·병합), `ImuFactor`/`ImuScaleGravityFactor`/`BiasRandomWalkFactor`/`BiasPriorFactor`(해석 Jacobian 수치 검증), `ImuPredictor`, `PoseInertialOptimizer`(CASE A/B, prior via dense Schur — 기본 OFF, ADR-0012), `ImuInitializer` 상태기계(staged prior, scale 분산 로그, mono scale refinement), `InertialBundleAdjuster`(temporal window 10/25, 경계 엣지 ×1e-2+Huber), culling 시 preintegration 병합, 러너 `--blackout` | **달성**: MH01 stereo-inertial ATE **0.048 m**(≤ 0.05), mono-inertial **0.048 m**(SE3, ≤ 0.08; scale 3.87 관측), 초기화 2.1 s / 2.0 s(≤ 15 s), 2회 실행 SHA 동일, 5 s 카메라 단절(t=42.5 s) 동안 dead reckoning 후 같은 맵에 재측위·단절 제외 ATE 0.036 m(IMU 없이는 3 s 후 새 맵) |
 | **P3 — 루프 클로징·다중 맵** | `LoopVerifier`(5단+3표), `Sim3/Se3/Yaw4Dof Corrector`, `PoseGraphOptimizer`(essential graph), `LooseBA`, 선택적 GBA(지연 적용), `MapStore.merge`(rigid snap / welding), `PosesCorrected` 이벤트 | KITTI 00 stereo ATE ≤ 1.5 m(ORB 1.2 m), EuRoC MH05 루프 후 개선 확인, LOST→새 맵→병합 시나리오 통합 테스트, 장시간 루프 시퀀스에서 메모리 단조 증가 없음 |
 | **P4 — 어댑터·플랫폼** | `G2oSolver`·`GtsamSolver` 어댑터 + 등가성 봉투 테스트, Jetson Orin Docker 실측, iOS XCFramework, C ABI, Python 바인딩(nanobind), 다중 카메라(N>2) FIG식 교차 추적 | 세 어댑터 GT 복구 동일 정확도; Orin 프레임당 ≤ 15 ms; iOS 빌드 통과 |
 | **P5 — 실시간 하드닝** | Realtime 모드 회귀 측정(프레임 drain·retention), TSAN 클린, 프로파일 기반 최적화(KLT GPU 옵션, Ceres 대신 자체 Schur SBA 검토), dense mapping 훅 예제 | Realtime ATE가 Offline 대비 +20% 이내(ORB의 5배 열화 반면교사), TSAN 데이터 레이스 0 |
@@ -20,6 +20,17 @@
 | KITTI 00 | stereo | 4541 / 4540 | 1580 | 77.9k | 4.9 ms | 2.6 ms/KF | 67 ms/KF | 4.99 m (SE3) |
 
 P0에서 확정된 설계 편차: 검출은 프론트엔드 KF 시점([02](02-frontend.md) §2.7), 점 파라미터화는 XYZ([03](03-backend.md) §2), KF culling 기본 OFF([ADR-0009](../adr/0009-keyframe-culling-off-for-klt.md)), Offline 실행 모드가 결정성의 근거([ADR-0007](../adr/0007-realtime-offline-execution-modes.md)).
+
+### P2 실측 요약 (EuRoC MH01, Offline, docker-release)
+| 구성 | KF | 초기화 | ATE RMSE (SE3) | 비고 |
+|---|---|---|---|---|
+| stereo-inertial (`euroc_stereo_imu.yaml`) | 468 | 2.1 s / 10 KF | **0.048 m** | 시각 전용(0.25 s KF 주기) 0.032 m; ORB-SLAM3 stereo-inertial 0.041 m·stereo 0.038 m처럼 MH01에서는 IMU가 정확도를 더하지 않음 |
+| mono-inertial (`euroc_mono_imu.yaml`) | 473 | 2.0 s / 10 KF, scale 3.87 | **0.048 m** | metric; 시각 전용 mono는 Sim3 0.142 m |
+| stereo-inertial, 프레임 pose-inertial ON | 474–477 | 〃 | 0.060 m (CASE A) / 0.070 m (CASE B) | ADR-0012 |
+| 5 s 카메라 단절 (t=42.5 s, 검은 프레임 100장) | 456 | 〃 | 단절 제외 0.036 m / 포함 0.216 m | dead reckoning 후 같은 맵 재측위; IMU 없이는 새 맵(0.109 m, 2맵) |
+| 결정성 | — | — | 2회 실행 궤적 바이트 동일 | |
+
+P2에서 확정된 편차: preintegration은 `sensors/imu`, 프레임 pose-inertial 최적화 기본 OFF(ADR-0012), 관성 LBA 경계 엣지 down-weight(ORB), mono-inertial은 KF culling OFF, 시각 전용 stereo 프리셋은 `kf_stereo_force_s: 0.25`(P0 게이트가 `inertial: imu`의 0.25 s KF 주기로 측정되었음을 명시).
 
 ### P1 실측 요약 (EuRoC V1_01 stereo, Offline)
 | 항목 | 결과 |

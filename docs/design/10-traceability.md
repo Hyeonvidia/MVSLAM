@@ -49,3 +49,9 @@
 | KLT 프리셋은 데이터셋별(창·레벨·fb) | fr1_desk 실측: 9/3/0.5 → 프레임당 50% 손실·2회 상실, 21/4/1.5 → 상실 0 |
 | 단안 KF culling ON | MH01 mono 실측 0.230(OFF) vs 0.142(ON) vs 0.204(min_other_observers 5) — ADR-0009 보강 |
 | 재측위 유예 5프레임 | 한 프레임 실패는 P3P 재시드로 회복; 즉시 재측위는 트랙을 줄인다(설계 02 §4) |
+| IMU preintegration/factor 수식 | `분석/01` §2.8(IntegrateNewMeasurement, 1차 bias 보정), `분석/10` §7(EdgeInertial/GS Jacobian); 우측 곱 규약으로 재유도해 수치미분 검증 |
+| 관성 LBA 경계 엣지 ×1e-2 + Huber √16.92 | `분석/10` §43(LocalInertialBA 경계 다운웨이트); MH01 실측 0.127 → 0.060 m |
+| 관성 LBA 창 10/25 선택 | ORB `bLarge`(inlier > 100 stereo / 75 mono); MH01 실측 창 10: 0.127, 20: 0.101, 25: 0.066 |
+| 프레임 pose-inertial 최적화 기본 OFF | MH01 실측 A 0.060 / B 0.070 vs 시각+IMU 예측 0.048 — [ADR-0012](../adr/0012-frame-inertial-optimization-off.md) |
+| IMU 초기화 후 누산기 재적분(리셋 아님) | P2 실측: 리셋하면 KF→프레임 구간 소실로 초기화 직후 추적 상실·새 맵 |
+| culling 시 preintegration 병합 + 간격 0.5/3 s | `분석/01` §2.8(`mergePrevious`), ORB KeyFrameCulling 관성 조건; mono-inertial 실측(병합 없이 1.38 m) |
